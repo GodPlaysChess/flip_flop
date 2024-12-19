@@ -13,6 +13,8 @@ const GREEN: u32 = 0x00ff00;
 const WHITE: u32 = 0xffffff;
 const BLACK: u32 = 0x000000;
 
+const TARGET_FPS: f32 = 60.0;
+
 fn main() {
     let mut window = Window::new(
         "Board Game",
@@ -28,15 +30,34 @@ fn main() {
     let mut game: GameState = GameState::new();
     game.board.set_cell(3, 3, Cell::Filled); // Fill some cells for testing
     game.board.set_cell(4, 4, Cell::Filled);
+    let frame_duration = 1.0 / TARGET_FPS;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        let mut last_time = std::time::Instant::now();
+        let now = std::time::Instant::now();
+        let elapsed = now.duration_since(last_time).as_secs_f32();
+        if elapsed < frame_duration {
+            std::thread::sleep(std::time::Duration::from_secs_f32(frame_duration - elapsed));
+        }
+
         buffer.fill(BLACK);
+        last_time = now;
+
         handle_mouse(&mut game, &window);
+
         draw_game(&game, &mut buffer);
         window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
     }
 }
 
+
+
+// let's make an optimisation that only redraws the changing elements, instead of drawing the whole state every time.
+// what's chaning:
+// 1. shapes after move being done
+// 2. if shape is selected -> cursor become shape
+// 3. when shape moves previous position is returned back to what it was, current mouse position got updated
+// 4. when placed -> board is updated
 fn draw_game(game_state: &GameState, buffer: &mut Vec<u32>) {
     draw_board(game_state, buffer);
     let mut i = 0;
@@ -127,11 +148,12 @@ fn draw_board(game: &GameState, buffer: &mut Vec<u32>) {
 
     // Highlight placement zone if a shape is selected
     if let Some(kind) = game.selected_shape {
+        //todo duplication here and inside game object
         let (x, y) = game.mouse_position;
         let n = x / CELL_SIZE;
         let m = y / CELL_SIZE;
 
-        let valid = game.is_valid_placement(&kind, n, m);
+        let valid = game.is_valid_placement_of_selected_shape();
         let color = if valid { GREEN } else { RED };
         for (dx, dy) in Shape::cells(&kind)  {
             let nx = n.wrapping_add(dx);
@@ -180,8 +202,6 @@ fn draw_rect(x: usize, y: usize, width: usize, height: usize, color: u32, buffer
 fn handle_mouse(game: &mut GameState, window: &Window) {
     // Get the mouse position in board coordinates
     if let Some((mx, my)) = window.get_mouse_pos(MouseMode::Clamp) {
-        let cell_x = (mx as usize) / CELL_SIZE;
-        let cell_y = (my as usize) / CELL_SIZE;
         game.mouse_position = (mx as usize, my as usize);
     }
 
@@ -189,6 +209,13 @@ fn handle_mouse(game: &mut GameState, window: &Window) {
     if window.get_mouse_down(MouseButton::Left) {
         println!("Mouse clicked: {} : {}", game.mouse_position.0, game.mouse_position.1);
         game.last_click_position = game.mouse_position.clone();
+
+        if game.selected_shape.is_some() && game.is_valid_placement_of_selected_shape() {
+          // try placing if valid
+            game.place_shape()
+        }
+
+        // if over shape
         for shape in game.shape_choice.iter() {
             if is_mouse_over_shape(game.mouse_position, shape.bot_left_pos.0, shape.bot_left_pos.1) {
                 game.selected_shape = Some(shape.kind.clone());

@@ -81,7 +81,17 @@ impl GameState {
         }
     }
 
-    pub fn is_valid_placement(&self, shape: &ShapeType, n: usize, m: usize) -> bool {
+    pub fn is_valid_placement_of_selected_shape(&self) -> bool {
+        if let Some(kind) = &self.selected_shape {
+            let (x, y) = &self.mouse_position;
+            let n = x / CELL_SIZE;
+            let m = y / CELL_SIZE;
+            return self.is_valid_placement(kind, n, m);
+        }
+        return false;
+    }
+
+    fn is_valid_placement(&self, shape: &ShapeType, n: usize, m: usize) -> bool {
         for (dx, dy) in Shape::cells(shape) {
             let nx = n.wrapping_add(dx);
             let ny = m.wrapping_add(dy);
@@ -92,14 +102,19 @@ impl GameState {
         true
     }
 
-    pub fn place_shape(&mut self, shape: &Shape, x: usize, y: usize) {
-        for (dx, dy) in &shape.cells {
-            let nx = x.wrapping_add(*dx);
-            let ny = y.wrapping_add(*dy);
-            if nx < BOARD_SIZE && ny < BOARD_SIZE {
-                self.board.grid[ny][nx] = Cell::Filled;
+    pub fn place_shape(&mut self) {
+        if let Some(selected_shape) = self.selected_shape {
+            for (dx, dy) in Shape::cells(&selected_shape) {
+                let (x, y) = &self.mouse_position;
+                let n = x / CELL_SIZE;
+                let m = y / CELL_SIZE;
+                let nx = n.wrapping_add(dx);
+                let ny = m.wrapping_add(dy);
+                if nx < BOARD_SIZE && ny < BOARD_SIZE {
+                    self.board.grid[ny][nx] = Cell::Filled;
+                }
             }
         }
-        self.score += shape.cells.len() as u32;
+        self.score += 4;
     }
 }
