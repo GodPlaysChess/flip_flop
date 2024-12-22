@@ -1,7 +1,11 @@
+use std::collections::VecDeque;
+use crate::events::{BoardUpdate, CellCoord, Event};
+use crate::events::Event::{BoardUpdated, ScoreUpdated};
+
 pub const BOARD_SIZE: usize = 12; // 12x12 board
 pub const CELL_SIZE: usize = 40; // Size of each cell in pixels
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Cell {
     Empty,
     Filled,
@@ -26,12 +30,13 @@ impl Board {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ShapeType {
     T,
     L,
 }
 
+#[derive(Clone, PartialEq, Debug)]
 pub struct Shape {
     pub kind: ShapeType,
     pub cells: Vec<(usize, usize)>, // Relative positions of filled cells
@@ -102,8 +107,10 @@ impl GameState {
         true
     }
 
-    pub fn place_shape(&mut self) {
+    pub fn place_shape(&mut self, events: &mut VecDeque<Event>) {
+        // todo check if have full row or column
         if let Some(selected_shape) = self.selected_shape {
+            let mut updates: Vec<BoardUpdate> = vec![];
             for (dx, dy) in Shape::cells(&selected_shape) {
                 let (x, y) = &self.mouse_position;
                 let n = x / CELL_SIZE;
@@ -112,9 +119,20 @@ impl GameState {
                 let ny = m.wrapping_add(dy);
                 if nx < BOARD_SIZE && ny < BOARD_SIZE {
                     self.board.grid[ny][nx] = Cell::Filled;
+                    updates.push(BoardUpdate {
+                        cell: Cell::Filled,
+                        coord: CellCoord(nx, ny)
+                    }
+
+                    )
                 }
+            }
+
+            if !updates.is_empty() {
+                events.push_front(BoardUpdated(updates))
             }
         }
         self.score += 4;
+        events.push_front(ScoreUpdated(4))
     }
 }
