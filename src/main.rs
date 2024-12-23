@@ -1,13 +1,14 @@
 use std::collections::{HashSet, VecDeque};
 
 use minifb::{Key, MouseButton, MouseMode, Window, WindowOptions};
-
 use crate::events::{BoardUpdate, CellCoord, Event, XY};
 use crate::events::Event::{BoardUpdated, ShapeChoiceUpdate};
 use crate::game_entities::{BOARD_SIZE, Cell, CELL_SIZE, GameState, Shape, ShapeType};
+use crate::render::Renderer;
 
 mod game_entities;
 mod events;
+mod render;
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
@@ -19,6 +20,7 @@ const WHITE: u32 = 0xffffff;
 const BLACK: u32 = 0x000000;
 
 const TARGET_FPS: f32 = 240.0;
+
 
 fn main() {
     let mut window = Window::new(
@@ -40,20 +42,26 @@ fn main() {
     game.board.set_cell(4, 4, Cell::Filled);
     let frame_duration = 1.0 / TARGET_FPS;
 
+
+    // Load the font file (ensure "DejaVuSans.ttf" is in your project directory)
+    let font_data = include_bytes!("resources\\DejaVuSans.ttf");
+    let mut renderer = Renderer { width: WIDTH, height: HEIGHT };
+
+
     // draw initial screen
     background_buffer.fill(BLACK);
-    draw_background(&game, &mut background_buffer);
+    draw_background(&game, &mut background_buffer, font_data, &mut renderer);
 
     let mut event_queue: VecDeque<Event> = VecDeque::new();
+    let mut last_time = std::time::Instant::now();
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        let mut last_time = std::time::Instant::now();
         let now = std::time::Instant::now();
         let elapsed = now.duration_since(last_time).as_secs_f32();
         if elapsed < frame_duration {
             std::thread::sleep(std::time::Duration::from_secs_f32(frame_duration - elapsed));
         }
-        last_time = now;
+
         handle_input(&mut game, &window, &mut event_queue);
 
         game_loop(&mut game, &mut event_queue);
@@ -61,7 +69,7 @@ fn main() {
         foreground_buffer.fill(0);
         while !event_queue.is_empty() {
             if let Some(event) = event_queue.pop_front() {
-                update_background(event, &game, &mut background_buffer);
+                update_background(event, &game, &mut background_buffer, &mut renderer, font_data);
             }
         }
 
@@ -77,8 +85,12 @@ fn main() {
         }
 
         window.update_with_buffer(&rendered_buffer, WIDTH, HEIGHT).unwrap();
+        last_time = now;
+
     }
 }
+
+
 
 //After placing a shape, only check rows and columns affected by the shape.
 //Use a bitmask for each row and column to track filled cells more efficiently.
@@ -105,12 +117,11 @@ fn game_loop(game_state: &mut GameState, event_queue: &mut VecDeque<Event>) {
         }
     }
 
-    if (upd_coord.is_empty()) {
+    if upd_coord.is_empty() {
         return;
     }
 
     // filter update events that updates this row or column
-    //event_queue.retain(|e| e)
     let mut updates = vec![];
     for event in event_queue.iter_mut() {
         if let BoardUpdated(ref mut updates) = event {
@@ -124,10 +135,10 @@ fn game_loop(game_state: &mut GameState, event_queue: &mut VecDeque<Event>) {
     event_queue.push_front(BoardUpdated(updates));
 }
 
-fn update_background(event: Event, game_state: &GameState, buffer: &mut Vec<u32>) {
+fn update_background(event: Event, game_state: &GameState, buffer: &mut Vec<u32>, renderer: &mut Renderer, font_data: &[u8]) {
     match event {
         Event::ScoreUpdated(new_score) => {
-            draw_score(new_score, buffer)
+            draw_score(new_score, renderer, font_data, buffer)
         }
         BoardUpdated(updates) => {
             for update in updates {
@@ -159,12 +170,12 @@ fn draw_foreground(game_state: &GameState, buffer: &mut Vec<u32>) {
 // 2. if shape is selected -> cursor become shape
 // 3. when shape moves previous position is returned back to what it was, current mouse position got updated
 // 4. when placed -> board is updated
-fn draw_background(game_state: &GameState, buffer: &mut Vec<u32>) {
+fn draw_background(game_state: &GameState, buffer: &mut Vec<u32>, font_data: &[u8], renderer: &mut Renderer) {
     // if board is changed
     draw_board(game_state, buffer);
     draw_shape_choice(game_state, buffer);
     // if score is changed
-    draw_score(game_state.score, buffer);
+    draw_score(game_state.score, renderer, font_data, buffer);
 }
 
 fn draw_shape_choice(game_state: &GameState, buffer: &mut Vec<u32>) {
@@ -192,52 +203,10 @@ fn draw_mouse_click(x_y: (usize, usize), buffer: &mut Vec<u32>) {
     }
 }
 
-fn draw_score(score: u32, buffer: &mut Vec<u32>) {
-    let text = format!("Score: {}", score);
-    let start_x = WIDTH - text.len() * 8 * 2; // Adjust for text length
-    let start_y = 10;
-
-    // Simplified text rendering using rectangles for each "pixel"
-    for (i, c) in text.chars().enumerate() {
-        let char_x = start_x + i * 16; // 16 pixels per character
-        draw_char(c, char_x, start_y, buffer);
-    }
+fn draw_score(score: u32, renderer: &Renderer, font_data: &[u8], buffer: &mut Vec<u32>) {
+    renderer.draw_text(score.to_string().as_str(), 800, 20, font_data, 36.0, WHITE, buffer);
 }
 
-fn draw_char(c: char, x: usize, y: usize, buffer: &mut Vec<u32>) {
-    let font_data = get_font_data(c); // You can define your font data for ASCII chars
-    for (row, line) in font_data.iter().enumerate() {
-        for (col, &pixel) in line.iter().enumerate() {
-            if pixel == 1 {
-                let px = x + col;
-                let py = y + row;
-                if px < WIDTH && py < HEIGHT {
-                    buffer[py * WIDTH + px] = WHITE; // White color for text
-                }
-            }
-        }
-    }
-}
-
-fn get_font_data(c: char) -> Vec<Vec<u8>> {
-    // Define font data (simplified for this example)
-    match c {
-        '0' => vec![
-            vec![0, 1, 1, 1, 0],
-            vec![1, 0, 0, 0, 1],
-            vec![1, 0, 0, 0, 1],
-            vec![0, 1, 1, 1, 0],
-        ],
-        '1' => vec![
-            vec![0, 0, 1, 0, 0],
-            vec![0, 1, 1, 0, 0],
-            vec![0, 0, 1, 0, 0],
-            vec![0, 1, 1, 1, 0],
-        ],
-        // Add definitions for other characters
-        _ => vec![vec![0; 5]; 5], // Blank for undefined characters
-    }
-}
 
 fn draw_board(game: &GameState, buffer: &mut Vec<u32>) {
     for y in 0..BOARD_SIZE {

@@ -1,4 +1,4 @@
-use crate::game_entities::{Cell, Shape, ShapeType};
+use crate::game_entities::Cell;
 
 #[derive(Debug)]
 pub enum Event {
