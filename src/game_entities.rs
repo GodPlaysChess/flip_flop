@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
+
 use crate::events::{BoardUpdate, CellCoord, Event};
-use crate::events::Event::{BoardUpdated, ScoreUpdated};
+use crate::events::Event::BoardUpdated;
 
 pub const BOARD_SIZE: usize = 12; // 12x12 board
 pub const CELL_SIZE: usize = 40; // Size of each cell in pixels
@@ -36,6 +37,15 @@ pub enum ShapeType {
     L,
 }
 
+impl ShapeType {
+    pub fn get_random_choice(n: usize) -> Vec<ShapeType> {
+        vec![
+            ShapeType::T,
+            ShapeType::L,
+        ]
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct Shape {
     pub kind: ShapeType,
@@ -45,10 +55,6 @@ pub struct Shape {
 
 impl Shape {
     pub fn new(kind: ShapeType, pos: (usize, usize)) -> Self {
-        // let cells = match kind {
-        //     ShapeType::T => vec![(1, 0), (0, 1), (1, 1), (2, 1)], // T-shape
-        //     ShapeType::L => vec![(0, 0), (0, 1), (0, 2), (1, 2)], // L-shape
-        // };
         let c = Self::cells(&kind);
         Self { kind, cells: c, bot_left_pos: pos }
     }
@@ -59,26 +65,32 @@ impl Shape {
             ShapeType::L => vec![(0, 0), (0, 1), (0, 2), (1, 2)], // L-shape
         };
     }
+
+    pub fn horizontal_size(kind: &ShapeType) -> usize {
+        return match kind {
+            ShapeType::T => 3,
+            ShapeType::L => 2
+        };
+    }
 }
 
 pub struct GameState {
     pub board: Board,
-    pub shape_choice: Vec<Shape>,
+    pub shape_choice: Vec<ShapeType>,
     pub selected_shape: Option<ShapeType>,
     pub score: u32,
     pub mouse_position: (usize, usize),
     pub last_click_position: (usize, usize),
+
+    // horizontal position in cells of the current choice row
+    pub shape_choice_positions: Vec<usize>
 }
 
 impl GameState {
     pub fn new() -> Self {
-        let shape_choice = vec![
-            Shape::new(ShapeType::T, (100, 500)),
-            Shape::new(ShapeType::L, (300, 500)),
-        ];
         Self {
             board: Board::new(),
-            shape_choice,
+            shape_choice: ShapeType::get_random_choice(3),
             selected_shape: None,
             score: 0,
             mouse_position: (0, 0),
@@ -108,7 +120,6 @@ impl GameState {
     }
 
     pub fn place_shape(&mut self, events: &mut VecDeque<Event>) {
-        // todo check if have full row or column
         if let Some(selected_shape) = self.selected_shape {
             let mut updates: Vec<BoardUpdate> = vec![];
             for (dx, dy) in Shape::cells(&selected_shape) {
@@ -121,9 +132,8 @@ impl GameState {
                     self.board.grid[ny][nx] = Cell::Filled;
                     updates.push(BoardUpdate {
                         cell: Cell::Filled,
-                        coord: CellCoord(nx, ny)
+                        coord: CellCoord(nx, ny),
                     }
-
                     )
                 }
             }
@@ -131,8 +141,8 @@ impl GameState {
             if !updates.is_empty() {
                 events.push_front(BoardUpdated(updates))
             }
+
+            self.selected_shape = None;
         }
-        self.score += 4;
-        events.push_front(ScoreUpdated(4))
     }
 }

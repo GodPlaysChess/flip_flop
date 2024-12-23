@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use minifb::{Key, MouseButton, MouseMode, Window, WindowOptions};
 use crate::events::{BoardUpdate, CellCoord, Event, XY};
@@ -13,13 +13,20 @@ mod render;
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
 
+const SHAPE_LINE_COORD_X: usize = 100;
+const SHAPE_LINE_COORD_Y: usize = 500;
+const SPACE_BETWEEN_CELLS: usize = 5;
+
 
 const RED: u32 = 0xff0000;
 const GREEN: u32 = 0x00ff00;
 const WHITE: u32 = 0xffffff;
 const BLACK: u32 = 0x000000;
 
+// settings
 const TARGET_FPS: f32 = 240.0;
+
+const N_SHAPES_PER_TURN: usize = 3;
 
 
 fn main() {
@@ -86,15 +93,24 @@ fn main() {
 
         window.update_with_buffer(&rendered_buffer, WIDTH, HEIGHT).unwrap();
         last_time = now;
-
     }
 }
-
 
 
 //After placing a shape, only check rows and columns affected by the shape.
 //Use a bitmask for each row and column to track filled cells more efficiently.
 fn game_loop(game_state: &mut GameState, event_queue: &mut VecDeque<Event>) {
+    verify_that_row_is_full(game_state, event_queue);
+    generate_new_shapes(game_state);
+}
+
+fn generate_new_shapes(game_state: &mut GameState) {
+    if game_state.selected_shape.is_none() && game_state.shape_choice.is_empty() {
+        game_state.shape_choice = ShapeType::get_random_choice(N_SHAPES_PER_TURN);
+    }
+}
+
+fn verify_that_row_is_full(game_state: &mut GameState, event_queue: &mut VecDeque<Event>) {
     // if row on the board is filled then score and remove it
     let mut filled_rows = Vec::new();
     let mut filled_cols = Vec::new();
@@ -147,7 +163,7 @@ fn update_background(event: Event, game_state: &GameState, buffer: &mut Vec<u32>
         }
         // to simplify the deselecting etc, we just redraw the shapes below
         ShapeChoiceUpdate => {
-            println!("Updating background shape choice with shapes {:?}", game_state.shape_choice);
+            // println!("Updating background shape choice with shapes {:?}", game_state.shape_choice);
             draw_shape_choice(game_state, buffer);
         }
     }
@@ -164,12 +180,6 @@ fn draw_foreground(game_state: &GameState, buffer: &mut Vec<u32>) {
     draw_mouse_click(game_state.last_click_position, buffer);
 }
 
-// let's make an optimisation that only redraws the changing elements, instead of drawing the whole state every time.
-// what's changing:
-// 1. shapes after move being done
-// 2. if shape is selected -> cursor become shape
-// 3. when shape moves previous position is returned back to what it was, current mouse position got updated
-// 4. when placed -> board is updated
 fn draw_background(game_state: &GameState, buffer: &mut Vec<u32>, font_data: &[u8], renderer: &mut Renderer) {
     // if board is changed
     draw_board(game_state, buffer);
@@ -181,8 +191,10 @@ fn draw_background(game_state: &GameState, buffer: &mut Vec<u32>, font_data: &[u
 fn draw_shape_choice(game_state: &GameState, buffer: &mut Vec<u32>) {
     // todo hardcoded coordinates and width
     draw_rect(100, 500, 500, 200, BLACK, buffer);
+    let mut pos_x = SHAPE_LINE_COORD_X;
     for shape in &game_state.shape_choice {
-        draw_shape(shape, RED, buffer);
+        draw_shape_kind(shape, SHAPE_LINE_COORD_X, SHAPE_LINE_COORD_Y, RED, buffer);
+        pos_x += CELL_SIZE * SPACE_BETWEEN_CELLS;
     }
 }
 
@@ -289,38 +301,54 @@ fn handle_input(game: &mut GameState, window: &Window, events: &mut VecDeque<Eve
             game.place_shape(events)
         }
 
-        let mut i = 0;
-        while i < game.shape_choice.len() {
-            let (x, y) = game.shape_choice[i].bot_left_pos;
-            if is_mouse_over_shape(game.mouse_position, x, y) {
-                let shape = game.shape_choice.swap_remove(i);
-                if let Some(currently_selected) = game.selected_shape {
-                    game.shape_choice.push(Shape::new(currently_selected.to_owned(), (100, 500)));
-                }
-                game.selected_shape = Some(shape.kind.clone());
-                events.push_front(ShapeChoiceUpdate);
-                break;
-            } else {
-                i += 1; // Only increment if no removal happens
+        //todo better collision check
+        let selected_shape = is_mouse_over_shape(game.mouse_position, &game.shape_choice);
+        if let Some(i) = selected_shape {
+            let shape = game.shape_choice.swap_remove(i);
+
+            // put the selected shape back
+            if let Some(currently_selected) = game.selected_shape {
+                game.shape_choice.push(currently_selected.to_owned());
             }
+            // new shape is selected
+            game.selected_shape = Some(shape);
+            events.push_front(ShapeChoiceUpdate);
         }
     }
 
     // Check for right click to deselect
     if window.get_mouse_down(MouseButton::Right) {
         if let Some(shape) = game.selected_shape {
-            // todo change this data structure that just contains shape choice, not coordinates.
-            game.shape_choice.push(Shape::new(shape, (300, 500)));
+            game.shape_choice.push(shape);
             events.push_front(ShapeChoiceUpdate);
         }
         game.selected_shape = None;
     }
 }
 
-fn is_mouse_over_shape(mouse: (usize, usize), shape_x: usize, shape_y: usize) -> bool {
-    // todo proper collision detection with polygon
+fn is_mouse_over_shape(mouse: (usize, usize), shapes: &Vec<ShapeType>) -> Option<usize> {
     let (mx, my) = mouse;
-    let inbound = mx >= shape_x && mx < (shape_x + CELL_SIZE) && my >= shape_y && my < (shape_y + CELL_SIZE);
-    println!("Selected: {}", inbound);
-    return inbound;
+    // Transform mouse coordinates to grid space
+    let relative_x = mx - SHAPE_LINE_COORD_X;
+    let relative_y = my - SHAPE_LINE_COORD_Y;
+    if relative_x < 0 || relative_y < 0 {
+        return None;
+    }
+
+    // converting to the grid space
+    let (col, row) = (relative_x / CELL_SIZE, relative_y / CELL_SIZE);
+
+    let shapes_grid: HashMap<usize, usize> = as_grid(shapes);
+    let max_col = (WIDTH - SHAPE_LINE_COORD_X) / CELL_SIZE;
+    let max_height = (HEIGHT - SHAPE_LINE_COORD_Y) / CELL_SIZE;
+    let ix = max_col * row + col;
+
+    return shapes_grid.get(&ix);
+}
+
+// converts shape choice to grid-like representation
+// but what shall we do with the selected shape? we dont' want to shift it every single time we select it
+// we do not have to compute it every time.
+fn as_grid(shapes: &Vec<ShapeType>) -> HashMap<usize, usize> {
+    todo!()
 }
