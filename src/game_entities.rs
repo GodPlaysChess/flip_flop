@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 use crate::events::{BoardUpdate, CellCoord, Event};
 use crate::events::Event::BoardUpdated;
+use crate::game_entities::ShapeState::VISIBLE;
 
 pub const BOARD_SIZE: usize = 12; // 12x12 board
 pub const CELL_SIZE: usize = 40; // Size of each cell in pixels
@@ -37,26 +38,40 @@ pub enum ShapeType {
     L,
 }
 
-impl ShapeType {
-    pub fn get_random_choice(n: usize) -> Vec<ShapeType> {
-        vec![
-            ShapeType::T,
-            ShapeType::L,
-        ]
-    }
-}
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Shape {
     pub kind: ShapeType,
-    pub cells: Vec<(usize, usize)>, // Relative positions of filled cells
-    pub bot_left_pos: (usize, usize),
+    pub state: ShapeState,
+    pub x_cell_coordinate: usize, // relative position is useful for rendering
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum ShapeState {
+    VISIBLE,
+    SELECTED,
+    PLACED,
 }
 
 impl Shape {
-    pub fn new(kind: ShapeType, pos: (usize, usize)) -> Self {
-        let c = Self::cells(&kind);
-        Self { kind, cells: c, bot_left_pos: pos }
+    pub fn set_state(&mut self, state: ShapeState) {
+        self.state = state;
+    }
+
+    pub fn new(kind: ShapeType, x: usize) -> Shape {
+        Shape {
+            kind,
+            state: VISIBLE,
+            x_cell_coordinate: x,
+        }
+    }
+
+    pub fn get_random_choice(n: usize) -> Vec<Shape> {
+        // todo proper generating logic
+        vec![
+            Shape::new(ShapeType::T, 0),
+            Shape::new(ShapeType::L, 4),
+        ]
     }
 
     pub fn cells(kind: &ShapeType) -> Vec<(usize, usize)> {
@@ -76,21 +91,18 @@ impl Shape {
 
 pub struct GameState {
     pub board: Board,
-    pub shape_choice: Vec<ShapeType>,
+    pub shape_choice: Vec<Shape>,
     pub selected_shape: Option<ShapeType>,
     pub score: u32,
     pub mouse_position: (usize, usize),
     pub last_click_position: (usize, usize),
-
-    // horizontal position in cells of the current choice row
-    pub shape_choice_positions: Vec<usize>
 }
 
 impl GameState {
     pub fn new() -> Self {
         Self {
             board: Board::new(),
-            shape_choice: ShapeType::get_random_choice(3),
+            shape_choice: Shape::get_random_choice(3),
             selected_shape: None,
             score: 0,
             mouse_position: (0, 0),
@@ -142,7 +154,26 @@ impl GameState {
                 events.push_front(BoardUpdated(updates))
             }
 
-            self.selected_shape = None;
+            self.deplace()
+        }
+    }
+
+    fn deplace(&mut self) {
+        self.selected_shape = None;
+        for s in self.shape_choice.iter_mut() {
+            if s.state == ShapeState::SELECTED {
+                s.set_state(ShapeState::PLACED)
+            }
+        }
+    }
+
+    pub fn deselect(&mut self) {
+        self.selected_shape = None;
+
+        for s in self.shape_choice.iter_mut() {
+            if s.state == ShapeState::SELECTED {
+                s.set_state(VISIBLE)
+            }
         }
     }
 }
