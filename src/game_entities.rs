@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-
+use rand::Rng;
 use crate::events::{BoardUpdate, CellCoord, Event};
 use crate::events::Event::BoardUpdated;
 use crate::game_entities::ShapeState::VISIBLE;
@@ -34,8 +34,18 @@ impl Board {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ShapeType {
-    T,
-    L,
+    T1,
+    T2,
+    T3,
+    T4,
+    L1,
+    L2,
+    L3,
+    L4,
+    I1,
+    I2,
+    O,
+    OO,
 }
 
 
@@ -67,24 +77,74 @@ impl Shape {
     }
 
     pub fn get_random_choice(n: usize) -> Vec<Shape> {
-        // todo proper generating logic
-        vec![
-            Shape::new(ShapeType::T, 0),
-            Shape::new(ShapeType::L, 4),
-        ]
+        let mut rng = rand::thread_rng(); // Random number generator
+        let all_shapes = [
+            (ShapeType::T1, 3),
+            (ShapeType::T2, 2),
+            (ShapeType::T3, 3),
+            (ShapeType::T4, 2),
+            (ShapeType::L1, 2),
+            (ShapeType::L2, 3),
+            (ShapeType::L3, 2),
+            (ShapeType::L4, 3),
+            (ShapeType::I1, 1),
+            (ShapeType::I2, 4),
+            (ShapeType::O, 1),
+            (ShapeType::OO, 2),
+        ];
+
+        let random_shapes: Vec<(ShapeType, usize)> = (0..n)
+            .map(|_| all_shapes[rng.gen_range(0..all_shapes.len())])
+            .collect();
+
+        // Compute positions using a fold
+        let mut current_position = 0;
+        random_shapes
+            .into_iter()
+            .map(|(shape, size)| {
+                let position = current_position;
+                current_position += size + 1; // Update for the next shape
+                return Shape::new(shape, position);
+            })
+            .collect()
     }
 
+    // todo apply random symmetry: mirror, rotational
     pub fn cells(kind: &ShapeType) -> Vec<(usize, usize)> {
         return match kind {
-            ShapeType::T => vec![(1, 0), (0, 1), (1, 1), (2, 1)], // T-shape
-            ShapeType::L => vec![(0, 0), (0, 1), (0, 2), (1, 2)], // L-shape
+            // col , row
+            ShapeType::T1 => vec![(1, 0), (0, 1), (1, 1), (2, 1)],
+            ShapeType::T2 => vec![(0, 0), (0, 1), (0, 2), (1, 1)],
+            ShapeType::T3 => vec![(0, 0), (1, 0), (1, 1), (2, 0)],
+            ShapeType::T4 => vec![(0, 1), (1, 0), (1, 1), (1, 2)],
+
+            ShapeType::L1 => vec![(0, 0), (0, 1), (0, 2), (1, 2)],
+            ShapeType::L2 => vec![(0, 1), (1, 1), (2, 0), (2, 1)],
+            ShapeType::L3 => vec![(0, 0), (1, 0), (1, 1), (1, 2)],
+            ShapeType::L4 => vec![(0, 0), (0, 1), (1, 0), (2, 0)],
+
+            ShapeType::I1 => vec![(0, 1), (0, 2), (0, 3), (0, 4)],
+            ShapeType::I2 => vec![(0, 0), (1, 0), (2, 0), (3, 0)],
+
+            ShapeType::O => vec![(0, 0)],
+            ShapeType::OO => vec![(0, 0), (0, 1), (1, 0), (1, 1)],
         };
     }
 
     pub fn horizontal_size(kind: &ShapeType) -> usize {
         return match kind {
-            ShapeType::T => 3,
-            ShapeType::L => 2
+            ShapeType::T1 => 3,
+            ShapeType::T2 => 2,
+            ShapeType::T3 => 3,
+            ShapeType::T4 => 2,
+            ShapeType::L1 => 3,
+            ShapeType::L2 => 2,
+            ShapeType::L3 => 3,
+            ShapeType::L4 => 2,
+            ShapeType::I1 => 1,
+            ShapeType::I2 => 4,
+            ShapeType::O => 1,
+            ShapeType::OO => 2,
         };
     }
 }

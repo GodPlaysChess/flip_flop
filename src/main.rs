@@ -195,9 +195,8 @@ fn draw_background(game_state: &GameState, buffer: &mut Vec<u32>, font_data: &[u
 fn draw_shape_choice(game_state: &GameState, buffer: &mut Vec<u32>) {
     // todo hardcoded coordinates and width
     draw_rect(SHAPE_LINE_COORD_X, SHAPE_LINE_COORD_Y, 1000, 300, BLACK, buffer);
-    let mut pos_x = SHAPE_LINE_COORD_X;
     for shape in &game_state.shape_choice {
-        pos_x += CELL_SIZE * shape.x_cell_coordinate;
+        let pos_x = SHAPE_LINE_COORD_X + CELL_SIZE * shape.x_cell_coordinate;
         if (shape.state == VISIBLE) {
             draw_shape_kind(&shape.kind, pos_x, SHAPE_LINE_COORD_Y, RED, buffer);
         }
