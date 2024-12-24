@@ -104,12 +104,13 @@ fn main() {
 //Use a bitmask for each row and column to track filled cells more efficiently.
 fn game_loop(game_state: &mut GameState, event_queue: &mut VecDeque<Event>) {
     verify_that_row_is_full(game_state, event_queue);
-    generate_new_shapes(game_state);
+    generate_new_shapes(game_state, event_queue);
 }
 
-fn generate_new_shapes(game_state: &mut GameState) {
-    if game_state.selected_shape.is_none() && game_state.shape_choice.is_empty() {
+fn generate_new_shapes(game_state: &mut GameState, event_queue: &mut VecDeque<Event>) {
+    if game_state.selected_shape.is_none() && !game_state.shape_choice.iter().any(|s| s.state == VISIBLE) {
         game_state.shape_choice = Shape::get_random_choice(N_SHAPES_PER_TURN);
+        event_queue.push_front(ShapeChoiceUpdate);
     }
 }
 
