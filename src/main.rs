@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use minifb::{Key, MouseButton, MouseMode, Window, WindowOptions};
 use crate::events::{BoardUpdate, CellCoord, Event, XY};
-use crate::events::Event::{BoardUpdated, ShapeChoiceUpdate};
+use crate::events::Event::{BoardUpdated, ScoreUpdated, ShapeChoiceUpdate};
 use crate::game_entities::{BOARD_SIZE, Cell, CELL_SIZE, GameState, Shape, ShapeState, ShapeType};
 use crate::game_entities::ShapeState::VISIBLE;
 use crate::render::Renderer;
@@ -152,7 +152,10 @@ fn verify_that_row_is_full(game_state: &mut GameState, event_queue: &mut VecDequ
         game_state.board.grid[r.1][r.0] = Cell::Empty;
         updates.push(BoardUpdate { cell: Cell::Empty, coord: r });
     }
+    game_state.score = game_state.score + updates.len() as u32;
     event_queue.push_front(BoardUpdated(updates));
+
+    event_queue.push_front(ScoreUpdated(game_state.score));
 }
 
 fn update_background(event: Event, game_state: &GameState, buffer: &mut Vec<u32>, renderer: &mut Renderer, font_data: &[u8]) {
