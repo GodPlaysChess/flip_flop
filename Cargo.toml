@@ -8,3 +8,7 @@ minifb = "0.27"
 log = "0.4.22"
 rusttype = "0.9"
 rand = "0.8"
+
+winit = { version = "0.29", features = ["rwh_05"] }
+env_logger = "0.10"
+wgpu = "22.0"
