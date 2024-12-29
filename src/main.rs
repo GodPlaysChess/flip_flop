@@ -160,7 +160,7 @@ fn verify_that_row_is_full(game_state: &mut GameState, event_queue: &mut VecDequ
 
 fn update_background(event: Event, game_state: &GameState, buffer: &mut Vec<u32>, renderer: &mut Renderer, font_data: &[u8]) {
     match event {
-        Event::ScoreUpdated(new_score) => {
+        ScoreUpdated(new_score) => {
             draw_score(new_score, renderer, font_data, buffer)
         }
         BoardUpdated(updates) => {
@@ -209,6 +209,7 @@ fn draw_shape_choice(game_state: &GameState, buffer: &mut Vec<u32>) {
 fn draw_cursor(selected_shape: &Option<ShapeType>, mouse_position: (usize, usize), buffer: &mut Vec<u32>) {
     if let Some(kind) = selected_shape {
         let (mx, my) = mouse_position;
+        // todo properly draw around cursor
         draw_shape_kind(kind, mx, my, GREEN, buffer);
     }
 }
