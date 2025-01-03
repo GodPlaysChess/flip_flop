@@ -171,3 +171,14 @@ fn draw_shape_choice(game_state: &GameState, buffer: &mut Vec<u32>) {
     }
 }
 
+fn render_cursor(cursor_position: (f64, f64), encoder: &mut wgpu::CommandEncoder, render_pipeline: &wgpu::RenderPipeline, render_target: &wgpu::TextureView) {
+    // Convert the cursor's logical position to a format suitable for rendering.
+    let cursor_x = cursor_position.0 as f32; // Adjust scaling if needed
+    let cursor_y = cursor_position.1 as f32;
+
+    let cursor_size = 10.0; // Size of the cursor (in pixels)
+
+    // Here you'd update vertex buffers or shaders to render the cursor at (cursor_x, cursor_y)
+    // For example, bind and draw a quad or circle.
+}
+
