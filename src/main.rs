@@ -35,8 +35,6 @@ pub async fn run() {
     event_loop.run(move |event, control_flow| {
         let mut cursor_position = (0.0, 0.0);
         match event {
-
-
             Event::WindowEvent {
                 ref event,
                 window_id,
@@ -52,11 +50,6 @@ pub async fn run() {
                         }
                         // This tells winit that we want another frame after this one
                         state.window().request_redraw();
-
-                        // if !surface_configured {
-                        //     return;
-                        // }
-
                         state.update();
                         match state.render() {
                             Ok(_) => {}
@@ -75,7 +68,7 @@ pub async fn run() {
                                 log::warn!("Surface timeout")
                             }
                         }
-                    },
+                    }
                     WindowEvent::CloseRequested
                     | WindowEvent::KeyboardInput {
                         event:
@@ -99,7 +92,6 @@ pub async fn run() {
 }
 
 fn main() {
-
     pollster::block_on(run());
 
     // let mut window = Window::new(

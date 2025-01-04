@@ -27,7 +27,7 @@ pub struct State<'a> {
     queue: wgpu::Queue,
     config: SurfaceConfiguration,
     pub size: winit::dpi::PhysicalSize<u32>,
-    // The window must be declared after the surface so
+    // The window must be declared after the surface, so
     // it gets dropped after it as the surface contains
     // unsafe references to the window's resources.
     window: &'a Window,
@@ -99,8 +99,6 @@ impl<'a> State<'a> {
             .find(|f| f.is_srgb())
             .copied()
             .unwrap_or(surface_caps.formats[0]);
-
-
 
         let config = SurfaceConfiguration {
             usage: TextureUsages::RENDER_ATTACHMENT,
