@@ -10,14 +10,18 @@ rusttype = "0.9"
 rand = "0.8"
 
 winit = { version = "0.29", features = ["rwh_05"] }
-env_logger = "0.10"
-wgpu = "22.0"
+env_logger = "0.11.6"
+wgpu = "23.0.1"
 pollster = "0.4.0"
 bytemuck = {  version = "1.21.0",  features = [ "derive" ] }
 anyhow = "1.0"
 
 
 [dependencies.image]
-version = "0.24"
+version = "0.25.5"
 default-features = false
 features = ["png", "jpeg"]
+
+
+# other deps...
+cgmath = "0.18"
