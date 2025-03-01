@@ -254,7 +254,6 @@ impl<'a> State<'a> {
 
         let depth_texture = texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
-
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
             layout: Some(&render_pipeline_layout),
