@@ -1,22 +1,21 @@
+use wgpu::*;
+use winit::{event::*, event_loop::EventLoop, keyboard::{KeyCode, PhysicalKey}, window::WindowBuilder};
+use winit::dpi::PhysicalSize;
+use winit::event_loop::EventLoopWindowTarget;
+
+use render::render::Render;
+
+use crate::events::Event::{Resize, ScoreUpdated};
+use crate::game_entities::GameState;
+use crate::input::Input;
+
 mod game_entities;
 mod events;
 mod render;
 mod logic;
-
-use std::collections::VecDeque;
-use minifb::{Key, Window, WindowOptions};
-use render::renderer::BLACK;
-use crate::game_entities::{Cell, GameState};
-use crate::render::renderer::Renderer;
-use wgpu::*;
-use winit::{
-    event::*,
-    event_loop::EventLoop,
-    keyboard::{KeyCode, PhysicalKey},
-    window::WindowBuilder,
-};
-use render::state::State;
-use render::renderer::*;
+mod system;
+mod input;
+mod sound;
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
@@ -28,69 +27,130 @@ const N_SHAPES_PER_TURN: usize = 3;
 pub async fn run() {
     env_logger::init();
     let event_loop = EventLoop::new().unwrap();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
-    let mut state = State::new(&window).await;
-    let mut surface_configured = false;
+    let window = WindowBuilder::new()
+        .with_visible(false)
+        .with_title("flip flop")
+        .build(&event_loop).unwrap();
 
+    let monitor = event_loop.primary_monitor().unwrap();
+    let video_mode = monitor.video_modes().next();
+    let size = video_mode
+        .clone()
+        .map_or(PhysicalSize::new(800, 600), |vm| vm.size());
+
+    // todo will change it to better version of cursor
+    // window.set_cursor_visible(false);
+
+    let mut render = pollster::block_on(Render::new(&window, size));
+    let mut game = GameState::new();
+
+
+    let sound_system = sound::SoundSystem::new();
+    let sound_pack = sound::SoundPack::new();
+    let mut game_event_queue: Vec<events::Event> = Vec::new();
+    let mut input = Input::new();
+
+    // todo initialise all systems
+    // systems would handle inputs
+
+    window.set_visible(true);
+    let mut last_time = instant::Instant::now();
+
+
+    // logic::handle_input(&mut game, &window, &mut game_event_queue);
+    // logic::game_loop(&mut game, &mut game_event_queue);
+
+    let window = &window;
+    let mut cursor_position = (0.0, 0.0);
     event_loop.run(move |event, control_flow| {
-        let mut cursor_position = (0.0, 0.0);
         match event {
             Event::WindowEvent {
-                ref event,
-                window_id,
-            } if window_id == state.window().id() => if !state.input(event) {
-                match event {
-                    WindowEvent::CursorMoved { position, .. } => {
-                        cursor_position = (position.x, position.y);
-                        println!("Cursor moved to: {:?}", cursor_position);
-                    }
-                    WindowEvent::RedrawRequested => {
-                        if !surface_configured {
-                            return;
-                        }
-                        // This tells winit that we want another frame after this one
-                        state.window().request_redraw();
-                        state.update();
-                        match state.render() {
-                            Ok(_) => {}
-                            // Reconfigure the surface if it's lost or outdated
-                            Err(
-                                wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                            ) => state.resize(state.size),
-                            // The system is out of memory, we should probably quit
-                            Err(wgpu::SurfaceError::OutOfMemory) => {
-                                log::error!("OutOfMemory");
-                                control_flow.exit();
-                            }
-
-                            // This happens when the a frame takes too long to present
-                            Err(wgpu::SurfaceError::Timeout) => {
-                                log::warn!("Surface timeout")
-                            }
-                        }
-                    }
-                    WindowEvent::CloseRequested
-                    | WindowEvent::KeyboardInput {
-                        event:
-                        KeyEvent {
-                            state: ElementState::Pressed,
-                            physical_key: PhysicalKey::Code(KeyCode::Escape),
-                            ..
-                        },
+                event: WindowEvent::KeyboardInput {
+                    event: KeyEvent {
+                        state: element_state,
+                        physical_key: PhysicalKey::Code(key),
                         ..
-                    } => control_flow.exit(),
-                    WindowEvent::Resized(physical_size) => {
-                        surface_configured = true;
-                        state.resize(*physical_size);
-                    }
-                    _ => {}
+                    },
+                    ..
+                },
+                ..
+            } => {
+                let input_handled = input.update(&key, &element_state);
+                if !input_handled {
+                    ignore_input(&element_state, &key, control_flow);
                 }
             }
+            Event::WindowEvent {
+                event: WindowEvent::CursorMoved {
+                    position,
+                    ..
+                }, ..
+            } => {
+                cursor_position = (position.x, position.y);
+                println!("Cursor moved to: {:?}", cursor_position);
+            }
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested, ..
+            } => {
+                let dt = last_time.elapsed();
+                last_time = instant::Instant::now();
+                window.request_redraw();
+
+                for event in &game_event_queue {
+                    match event {
+                        events::Event::FocusChanged | events::Event::ButtonPressed => {
+                            sound_system.queue(sound_pack.bounce());
+                        }
+                        ScoreUpdated(u32) => {
+                            sound_system.queue(sound_pack.bounce());
+                        }
+                        events::Event::BoardUpdated(_) => {
+                            //todo logic
+                        }
+                        events::Event::ShapeChoiceUpdate => {
+                            // todo logic
+                        }
+                        Resize(_, _) => {}
+                    }
+                }
+                game_event_queue.clear();
+                render.render_state(&game);
+                window.request_redraw();
+            }
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested | WindowEvent::KeyboardInput {
+                    event: KeyEvent {
+                        state: ElementState::Pressed,
+                        physical_key: PhysicalKey::Code(KeyCode::Escape),
+                        ..
+                    },
+                    ..
+                }, ..
+            } => control_flow.exit(),
+
+            Event::WindowEvent {
+                event: WindowEvent::Resized(size),
+                ..
+            } => {
+                render.resize(size);
+                game_event_queue.push(events::Event::Resize(size.width as f32, size.height as f32));
+            }
+
             _ => {}
         }
     }).unwrap();
 }
 
+fn ignore_input(
+    element_state: &ElementState,
+    keycode: &KeyCode,
+    control_flow: &EventLoopWindowTarget<()>,
+) {
+    match (keycode, element_state) {
+        (KeyCode::Escape, ElementState::Pressed) => control_flow.exit(),
+        _ => {}
+    }
+}
 
 fn main() {
     pollster::block_on(run());

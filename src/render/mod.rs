@@ -1,5 +1,5 @@
-pub mod state;
+pub mod render;
 pub mod renderer;
-pub(crate) mod model;
+pub(crate) mod buffer;
 mod texture;
 mod camera;

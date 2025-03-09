@@ -1,8 +1,8 @@
 use rusttype::{Font, point, Scale};
-use crate::game_entities::{BOARD_SIZE, Cell, CELL_SIZE, GameState, Shape, ShapeType};
+
 use crate::{HEIGHT, WIDTH};
-use crate::events::{Event, XY};
-use crate::events::Event::{BoardUpdated, ScoreUpdated, ShapeChoiceUpdate};
+use crate::events::XY;
+use crate::game_entities::{BOARD_SIZE, Cell, CELL_SIZE, GameState, Shape, ShapeType};
 use crate::game_entities::ShapeState::VISIBLE;
 use crate::logic::{SHAPE_LINE_COORD_X, SHAPE_LINE_COORD_Y};
 
@@ -123,23 +123,23 @@ pub fn draw_rect(x: usize, y: usize, width: usize, height: usize, color: u32, bu
     }
 }
 
-pub fn update_background(event: Event, game_state: &GameState, buffer: &mut Vec<u32>, renderer: &mut Renderer, font_data: &[u8]) {
-    match event {
-        ScoreUpdated(new_score) => {
-            draw_score(new_score, renderer, font_data, buffer)
-        }
-        BoardUpdated(updates) => {
-            for update in updates {
-                draw_cell(update.coord.0, update.coord.1, &update.cell, buffer);
-            }
-        }
-        // to simplify the deselecting etc, we just redraw the shapes below
-        ShapeChoiceUpdate => {
-            // println!("Updating background shape choice with shapes {:?}", game_state.shape_choice);
-            draw_shape_choice(game_state, buffer);
-        }
-    }
-}
+// pub fn update_background(event: Event, game_state: &GameState, buffer: &mut Vec<u32>, renderer: &mut Renderer, font_data: &[u8]) {
+//     match event {
+//         ScoreUpdated(new_score) => {
+//             draw_score(new_score, renderer, font_data, buffer)
+//         }
+//         BoardUpdated(updates) => {
+//             for update in updates {
+//                 draw_cell(update.coord.0, update.coord.1, &update.cell, buffer);
+//             }
+//         }
+//         // to simplify the deselecting etc, we just redraw the shapes below
+//         ShapeChoiceUpdate => {
+//             // println!("Updating background shape choice with shapes {:?}", game_state.shape_choice);
+//             draw_shape_choice(game_state, buffer);
+//         }
+//     }
+// }
 
 pub fn draw_foreground(game_state: &GameState, buffer: &mut Vec<u32>) {
     draw_cursor(&game_state.selected_shape, game_state.mouse_position, buffer);
