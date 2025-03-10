@@ -2,15 +2,15 @@ use std::cmp::max;
 use std::iter;
 
 use cgmath::prelude::*;
-use wgpu::{MemoryHints, SurfaceConfiguration, TextureUsages};
+use wgpu::{MemoryHints, PipelineLayout, RenderPipelineDescriptor, ShaderModule, SurfaceConfiguration, TextureFormat, TextureUsages};
 use wgpu::util::{DeviceExt, RenderEncoder};
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
 
 // use wgpu_glyph::{ab_glyph, Section, Text};
-use crate::game_entities::{Board, Cell, GameState, Shape};
-use crate::render::buffer::{generate_board_vertices, generate_panel_vertices, Vertex};
+use crate::game_entities::{Board, BOARD_SIZE, Cell, GameState, Shape};
+use crate::render::buffer::{generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, Vertex};
 use crate::render::camera::{Camera, CameraController, CameraUniform};
 use crate::render::texture;
 use crate::render::texture::Texture;
@@ -32,7 +32,8 @@ pub struct Render<'a> {
     adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
-    render_pipeline: wgpu::RenderPipeline,
+    point_render_pipeline: wgpu::RenderPipeline,
+    triangle_render_pipeline: wgpu::RenderPipeline,
 
     board_vertex_buffer: wgpu::Buffer,
     panel_vertex_buffer: wgpu::Buffer,
@@ -114,53 +115,14 @@ impl<'a> Render<'a> {
         let vertex_shader_module = device.create_shader_module(wgpu::include_wgsl!("../../res/shaders/textured.vert.wgsl"));
         let fragment_shader_module = device.create_shader_module(wgpu::include_wgsl!("../../res/shaders/textured.frag.wgsl"));
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &vertex_shader_module,
-                entry_point: Some("vs_main"),
-                buffers: &[Vertex::DESC],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &fragment_shader_module,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState {
-                        alpha: wgpu::BlendComponent::REPLACE,
-                        color: wgpu::BlendComponent::REPLACE,
-                    }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
+        let point_render_pipeline = create_pipeline(&device, &render_pipeline_layout, &vertex_shader_module, &fragment_shader_module, config.format.clone(), wgpu::PrimitiveTopology::PointList);
+        let triangle_render_pipeline = create_pipeline(&device, &render_pipeline_layout, &vertex_shader_module, &fragment_shader_module, config.format.clone(), wgpu::PrimitiveTopology::TriangleList);
 
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList, // 1.
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw, // 2.
-                cull_mode: Some(wgpu::Face::Back),
-                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
-                polygon_mode: wgpu::PolygonMode::Fill,
-                // Requires Features::DEPTH_CLIP_CONTROL
-                unclipped_depth: false,
-                // Requires Features::CONSERVATIVE_RASTERIZATION
-                conservative: false,
-            },
-            depth_stencil: None, //todo gleb - figure out what is this
-            multisample: wgpu::MultisampleState {
-                count: 1, // 2.
-                mask: !0, // 3.
-                alpha_to_coverage_enabled: false, // 4.
-            },
-            multiview: None, // 5.
-            cache: None, // 6.
-        });
-
-        let board_vertices = generate_board_vertices();
-        let panel_vertices = generate_panel_vertices();
+        let board_vertices = normalize_screen_to_ndc(generate_board_vertices(), size);
+        println!("Vertex 1: {:?}", board_vertices[0]);
+        println!("Vertex 2: {:?}", board_vertices[112]);
+        println!("Vertex 3: {:?}", board_vertices[120]);
+        let panel_vertices = normalize_screen_to_ndc(generate_panel_vertices(), size);
 
         let board_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Board Vertex Buffer"),
@@ -176,7 +138,7 @@ impl<'a> Render<'a> {
 
         let cursor_vertex_buffer = create_cursor_buffer(&device);
 
-        let board_index_buffer = create_index_buffer(&device, 726);
+        let board_index_buffer = create_index_buffer(&device, BOARD_SIZE * BOARD_SIZE * 6);
         let panel_index_buffer = create_index_buffer(&device, 14 * 6 * 2);
 
         surface.configure(&device, &config);
@@ -193,7 +155,8 @@ impl<'a> Render<'a> {
             device,
             queue,
             config,
-            render_pipeline,
+            point_render_pipeline,
+            triangle_render_pipeline,
             board_vertex_buffer,
             panel_vertex_buffer,
             cursor_vertex_buffer,
@@ -203,6 +166,7 @@ impl<'a> Render<'a> {
             staging_belt,
         }
     }
+
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
@@ -219,7 +183,11 @@ impl<'a> Render<'a> {
 
         //todo add cursor shadow
         let board_indicies = render_board(&state.board);
+        // let board_indicies: Vec<u32> = vec![0, 13, 14/*, 0, 14, 1, 20, 33, 34, 20, 34, 21, 43, 56, 57, 43, 57, 44*/];
+        // let board_indicies = vec![1u32, 112u32,120u32];
+
         let panel_indicies = render_panel(&state.shape_choice);
+
 
         match self.surface.get_current_texture() {
             Ok(frame) => {
@@ -233,32 +201,35 @@ impl<'a> Render<'a> {
                     })],
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
-                    occlusion_query_set: None
+                    occlusion_query_set: None,
                 });
-                render_pass.set_pipeline(&self.render_pipeline);
-
-
                 // ✅ Bind the board buffers ONCE, then draw all board elements
                 render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
+
+                // DRAW GRID
+                render_pass.set_pipeline(&self.point_render_pipeline);
+                render_pass.draw(0..(BOARD_SIZE*BOARD_SIZE) as u32 - 1, 0..1);
+
+                // DRAW cells
+                render_pass.set_pipeline(&self.triangle_render_pipeline);
                 //todo If board changed
                 // ✅ Upload new index buffer to GPU
                 self.queue.write_buffer(&self.board_index_buffer, 0, bytemuck::cast_slice(&board_indicies));
-
-                render_pass.set_index_buffer(self.board_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                render_pass.set_index_buffer(self.board_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..board_indicies.len() as u32, 0, 0..1);
 
                 // ✅ Bind the panel buffers ONCE, then draw all panel elements
-                render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
+                // render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
                 //todo If panel changed
-                self.queue.write_buffer(&self.panel_index_buffer, 0, bytemuck::cast_slice(&board_indicies));
-                render_pass.set_index_buffer(self.panel_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                render_pass.draw_indexed(0..panel_indicies.len() as u32, 0, 0..1);
+                // self.queue.write_buffer(&self.panel_index_buffer, 0, bytemuck::cast_slice(&board_indicies));
+                // render_pass.set_index_buffer(self.panel_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                // render_pass.draw_indexed(0..panel_indicies.len() as u32, 0, 0..1);
 
                 // ✅ Cursor changes every frame, so we must update the buffer
-                let new_cursor_vertices = render_cursor(state.mouse_position);
-                self.queue.write_buffer(&self.cursor_vertex_buffer, 0, bytemuck::cast_slice(&new_cursor_vertices));
-                render_pass.set_vertex_buffer(0, self.cursor_vertex_buffer.slice(..));
-                render_pass.draw(0..4, 0..1); // No index buffer needed, just 4 vertices
+                // let new_cursor_vertices = render_cursor(state.mouse_position);
+                // self.queue.write_buffer(&self.cursor_vertex_buffer, 0, bytemuck::cast_slice(&new_cursor_vertices));
+                // render_pass.set_vertex_buffer(0, self.cursor_vertex_buffer.slice(..));
+                // render_pass.draw(0..4, 0..1); // No index buffer needed, just 4 vertices
 
                 drop(render_pass);
 
@@ -306,12 +277,22 @@ pub fn render_board(board: &Board) -> Vec<u32> {
     let mut indices = Vec::new();
     let board_size = board.grid.len();
 
-    for y in 0..board_size {
-        for x in 0..board_size {
-            if let Cell::Filled = board.grid[y][x] {
-                let top_left = (y * (board_size + 1) + x) as u32;
+    /*
+             0   1   2   3
+               C0  C1  C2
+             4   5   6   7
+               C3  C4  C5
+             8   9   10  11
+               C6  C7  C8
+             12  13  14  15
+
+     */
+    for row in 0..board_size {
+        for col in 0..board_size {
+            if let Cell::Filled = board.grid[row][col] {
+                let top_left = (row * (board_size + 1) + col) as u32;
                 let top_right = top_left + 1;
-                let bottom_left = top_left + (board_size as u32 + 1);
+                let bottom_left = top_left + (board_size + 1) as u32;
                 let bottom_right = bottom_left + 1;
 
                 // Two triangles per cell (diagonal split)
@@ -322,6 +303,8 @@ pub fn render_board(board: &Board) -> Vec<u32> {
             }
         }
     }
+
+                println!("Selected indices {:?}", indices);
 
     indices
 }
@@ -363,5 +346,57 @@ fn create_index_buffer(device: &wgpu::Device, max_indices: usize) -> wgpu::Buffe
         size: (std::mem::size_of::<u16>() * max_indices) as wgpu::BufferAddress, // Preallocate space
         usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST, // COPY_DST allows updates
         mapped_at_creation: false,
+    })
+}
+
+fn create_pipeline(device: &wgpu::Device,
+                   render_pipeline_layout: &PipelineLayout,
+                   vertex_shader_module: &ShaderModule,
+                   fragment_shader_module: &ShaderModule,
+                   format: TextureFormat,
+                   topology: wgpu::PrimitiveTopology) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("Render Pipeline"),
+        layout: Some(&render_pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &vertex_shader_module,
+            entry_point: Some("vs_main"),
+            buffers: &[Vertex::DESC],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &fragment_shader_module,
+            entry_point: Some("fs_main"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: format,
+                blend: Some(wgpu::BlendState {
+                    alpha: wgpu::BlendComponent::REPLACE,
+                    color: wgpu::BlendComponent::REPLACE,
+                }),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        }),
+
+        primitive: wgpu::PrimitiveState {
+            topology: topology,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw, // 2.
+            cull_mode: Some(wgpu::Face::Back),
+            // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+            polygon_mode: wgpu::PolygonMode::Fill,
+            // Requires Features::DEPTH_CLIP_CONTROL
+            unclipped_depth: false,
+            // Requires Features::CONSERVATIVE_RASTERIZATION
+            conservative: false,
+        },
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState {
+            count: 1, // 2.
+            mask: !0, // 3.
+            alpha_to_coverage_enabled: false, // 4.
+        },
+        multiview: None, // 5.
+        cache: None, // 6.
     })
 }

@@ -1,3 +1,6 @@
+use winit::dpi::PhysicalSize;
+use crate::game_entities::BOARD_SIZE;
+
 pub const U32_SIZE: wgpu::BufferAddress = std::mem::size_of::<u32>() as wgpu::BufferAddress;
 pub const CELL_SIZE: f32 = 50.0;
 
@@ -8,10 +11,10 @@ pub const PANEL_OFFSET_X: f32 = 100.0;
 pub const PANEL_OFFSET_Y: f32 = BOARD_OFFSET_Y + CELL_SIZE * 12.0;
 
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Vertex {
     #[allow(dead_code)]
-    position: cgmath::Vector2<f32>,
+    pub position: cgmath::Vector2<f32>,
 }
 
 unsafe impl bytemuck::Pod for Vertex {}
@@ -39,8 +42,8 @@ impl Vertex {
 pub fn generate_board_vertices() -> Vec<Vertex> {
     let mut vertices = Vec::new();
 
-    for row in 0..=10 {  // We need 11 rows (0-10) for 10 cells
-        for col in 0..=10 {
+    for row in 0..=BOARD_SIZE {  // We need 11 rows (0-10) for 10 cells
+        for col in 0..=BOARD_SIZE {
             let x = col as f32 * CELL_SIZE + BOARD_OFFSET_X;
             let y = row as f32 * CELL_SIZE + BOARD_OFFSET_Y;
             vertices.push(Vertex::new(x, y));
@@ -50,6 +53,21 @@ pub fn generate_board_vertices() -> Vec<Vertex> {
     vertices
 }
 
+pub fn normalize_screen_to_ndc(v: Vec<Vertex>, size: PhysicalSize<u32>) -> Vec<Vertex> {
+    let width = size.width as f32;
+    let height = size.height as f32;
+
+    v.into_iter()
+        .map(|vertex| {
+            let ndc_x = (vertex.position.x / width) * 2.0 - 1.0;
+            let ndc_y = 1.0 - (vertex.position.y / height) * 2.0; // Flip Y-axis
+
+            Vertex {
+                position: cgmath::Vector2::new(ndc_x, ndc_y),
+            }
+        })
+        .collect()
+}
 pub fn generate_panel_vertices() -> Vec<Vertex> {
     let mut vertices = Vec::new();
     for row in 0..=5 {  // We need 11 rows (0-10) for 10 cells

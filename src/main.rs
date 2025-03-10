@@ -6,7 +6,7 @@ use winit::event_loop::EventLoopWindowTarget;
 use render::render::Render;
 
 use crate::events::Event::{Resize, ScoreUpdated};
-use crate::game_entities::GameState;
+use crate::game_entities::{Cell, GameState};
 use crate::input::Input;
 
 mod game_entities;
@@ -43,6 +43,9 @@ pub async fn run() {
 
     let mut render = pollster::block_on(Render::new(&window, size));
     let mut game = GameState::new();
+    game.board.set_cell(4, 3, Cell::Filled);
+    game.board.set_cell(7, 1, Cell::Filled);
+    game.board.set_cell(0, 0, Cell::Filled);
 
 
     let sound_system = sound::SoundSystem::new();
