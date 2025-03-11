@@ -1,8 +1,7 @@
 use winit::dpi::PhysicalSize;
 use crate::game_entities::BOARD_SIZE;
 
-pub const U32_SIZE: wgpu::BufferAddress = std::mem::size_of::<u32>() as wgpu::BufferAddress;
-pub const CELL_SIZE: f32 = 50.0;
+pub const CELL_SIZE: f32 = 30.0;
 
 pub const BOARD_OFFSET_X: f32 = 100.0;
 pub const BOARD_OFFSET_Y: f32 = 100.0;
@@ -56,6 +55,7 @@ pub fn generate_board_vertices() -> Vec<Vertex> {
 pub fn normalize_screen_to_ndc(v: Vec<Vertex>, size: PhysicalSize<u32>) -> Vec<Vertex> {
     let width = size.width as f32;
     let height = size.height as f32;
+    // let aspect_ratio = screen_width as f32 / screen_height as f32;
 
     v.into_iter()
         .map(|vertex| {

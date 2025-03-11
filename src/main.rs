@@ -1,4 +1,3 @@
-use wgpu::*;
 use winit::{event::*, event_loop::EventLoop, keyboard::{KeyCode, PhysicalKey}, window::WindowBuilder};
 use winit::dpi::PhysicalSize;
 use winit::event_loop::EventLoopWindowTarget;
@@ -27,16 +26,12 @@ const N_SHAPES_PER_TURN: usize = 3;
 pub async fn run() {
     env_logger::init();
     let event_loop = EventLoop::new().unwrap();
+    let size = PhysicalSize::new(1200, 800);
     let window = WindowBuilder::new()
         .with_visible(false)
         .with_title("flip flop")
+        .with_inner_size(size)
         .build(&event_loop).unwrap();
-
-    let monitor = event_loop.primary_monitor().unwrap();
-    let video_mode = monitor.video_modes().next();
-    let size = video_mode
-        .clone()
-        .map_or(PhysicalSize::new(800, 600), |vm| vm.size());
 
     // todo will change it to better version of cursor
     // window.set_cursor_visible(false);

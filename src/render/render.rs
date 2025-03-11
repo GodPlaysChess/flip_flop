@@ -1,33 +1,16 @@
 use std::cmp::max;
 use std::iter;
-
-use cgmath::prelude::*;
-use wgpu::{MemoryHints, PipelineLayout, RenderPipelineDescriptor, ShaderModule, SurfaceConfiguration, TextureFormat, TextureUsages};
-use wgpu::util::{DeviceExt, RenderEncoder};
-use winit::event::{ElementState, KeyEvent, WindowEvent};
-use winit::keyboard::{KeyCode, PhysicalKey};
+use wgpu::{MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat, TextureUsages};
+use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 // use wgpu_glyph::{ab_glyph, Section, Text};
 use crate::game_entities::{Board, BOARD_SIZE, Cell, GameState, Shape};
 use crate::render::buffer::{generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, Vertex};
-use crate::render::camera::{Camera, CameraController, CameraUniform};
-use crate::render::texture;
-use crate::render::texture::Texture;
-
-const INDICES: &[u16] = &[
-    0, 1, 4,
-    1, 2, 4,
-    2, 3, 4,
-];
-
-const NUM_INSTANCES_PER_ROW: u32 = 10;
-const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(NUM_INSTANCES_PER_ROW as f32 * 0.5, 0.0, NUM_INSTANCES_PER_ROW as f32 * 0.5);
-
 
 pub struct Render<'a> {
     pub surface: wgpu::Surface<'a>,
-    config: SurfaceConfiguration,
+    surface_config: SurfaceConfiguration,
 
     adapter: wgpu::Adapter,
     device: wgpu::Device,
@@ -70,6 +53,7 @@ impl<'a> Render<'a> {
             },
         ).await.unwrap();
 
+
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
                 required_features: wgpu::Features::empty(),
@@ -94,16 +78,21 @@ impl<'a> Render<'a> {
             .copied()
             .unwrap_or(surface_caps.formats[0]);
 
-        let config = SurfaceConfiguration {
+        let scale_factor = window.scale_factor(); // Get DPI scale
+        let physical_width = (size.width as f64 * scale_factor) as u32;
+        let physical_height = (size.height as f64 * scale_factor) as u32;
+
+        let surface_config = SurfaceConfiguration {
             usage: TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
-            width: size.width,
-            height: size.height,
+            width: physical_width,
+            height: physical_height,
             present_mode: surface_caps.present_modes[0],
             desired_maximum_frame_latency: 2,
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
         };
+
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -115,13 +104,10 @@ impl<'a> Render<'a> {
         let vertex_shader_module = device.create_shader_module(wgpu::include_wgsl!("../../res/shaders/textured.vert.wgsl"));
         let fragment_shader_module = device.create_shader_module(wgpu::include_wgsl!("../../res/shaders/textured.frag.wgsl"));
 
-        let point_render_pipeline = create_pipeline(&device, &render_pipeline_layout, &vertex_shader_module, &fragment_shader_module, config.format.clone(), wgpu::PrimitiveTopology::PointList);
-        let triangle_render_pipeline = create_pipeline(&device, &render_pipeline_layout, &vertex_shader_module, &fragment_shader_module, config.format.clone(), wgpu::PrimitiveTopology::TriangleList);
+        let point_render_pipeline = create_pipeline(&device, &render_pipeline_layout, &vertex_shader_module, &fragment_shader_module, surface_config.format.clone(), wgpu::PrimitiveTopology::PointList);
+        let triangle_render_pipeline = create_pipeline(&device, &render_pipeline_layout, &vertex_shader_module, &fragment_shader_module, surface_config.format.clone(), wgpu::PrimitiveTopology::TriangleList);
 
         let board_vertices = normalize_screen_to_ndc(generate_board_vertices(), size);
-        println!("Vertex 1: {:?}", board_vertices[0]);
-        println!("Vertex 2: {:?}", board_vertices[112]);
-        println!("Vertex 3: {:?}", board_vertices[120]);
         let panel_vertices = normalize_screen_to_ndc(generate_panel_vertices(), size);
 
         let board_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -141,7 +127,9 @@ impl<'a> Render<'a> {
         let board_index_buffer = create_index_buffer(&device, BOARD_SIZE * BOARD_SIZE * 6);
         let panel_index_buffer = create_index_buffer(&device, 14 * 6 * 2);
 
-        surface.configure(&device, &config);
+        surface.configure(&device, &surface_config);
+        let size = surface.get_current_texture().unwrap().texture.size();
+        println!("wgpu Render Target Size: {}x{}", size.width, size.height);
 
         // let font = ab_glyph::FontArc::try_from_slice(FONT_BYTES).unwrap();
         // let glyph_brush =
@@ -154,7 +142,7 @@ impl<'a> Render<'a> {
             adapter,
             device,
             queue,
-            config,
+            surface_config,
             point_render_pipeline,
             triangle_render_pipeline,
             board_vertex_buffer,
@@ -170,9 +158,9 @@ impl<'a> Render<'a> {
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
-            self.surface.configure(&self.device, &self.config);
+            self.surface_config.width = new_size.width;
+            self.surface_config.height = new_size.height;
+            self.surface.configure(&self.device, &self.surface_config);
         }
     }
 
@@ -187,7 +175,6 @@ impl<'a> Render<'a> {
         // let board_indicies = vec![1u32, 112u32,120u32];
 
         let panel_indicies = render_panel(&state.shape_choice);
-
 
         match self.surface.get_current_texture() {
             Ok(frame) => {
@@ -239,7 +226,7 @@ impl<'a> Render<'a> {
             }
             Err(wgpu::SurfaceError::Outdated) => {
                 log::info!("Outdated surface texture");
-                self.surface.configure(&self.device, &self.config);
+                self.surface.configure(&self.device, &self.surface_config);
             }
             Err(e) => {
                 log::error!("Error: {}", e);
@@ -303,8 +290,6 @@ pub fn render_board(board: &Board) -> Vec<u32> {
             }
         }
     }
-
-                println!("Selected indices {:?}", indices);
 
     indices
 }
