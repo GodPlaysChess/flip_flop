@@ -198,12 +198,13 @@ impl<'a> Render<'a> {
 
         let cursor_vertex_buffer = create_cursor_buffer(&device);
 
-        let board_index_buffer = create_index_buffer(&device, BOARD_SIZE * BOARD_SIZE * 6);
-        let panel_index_buffer = create_index_buffer(&device, 14 * 6 * 2);
+        // for the all board to be filled
+        let board_index_buffer = create_index_buffer(&device, render_config.board_size_cols * render_config.board_size_cols * 6);
+        // there will be at most 4 shapes, 5 cells each, so we could limit it to 20 * 6
+        let panel_index_buffer = create_index_buffer(&device, 120);
 
         surface.configure(&device, &surface_config);
         let size = surface.get_current_texture().unwrap().texture.size();
-        println!("wgpu Render Target Size: {}x{}", size.width, size.height);
 
         // let font = ab_glyph::FontArc::try_from_slice(FONT_BYTES).unwrap();
         // let glyph_brush =
@@ -271,7 +272,7 @@ impl<'a> Render<'a> {
                 render_pass.draw(0..board_vertex_number as u32, 0..1);
 
                 render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
-                render_pass.draw(0..panel_vertex_number as u32, 1..2);
+                render_pass.draw(0..panel_vertex_number as u32, 0..1);
 
                 // DRAW cells
                 render_pass.set_pipeline(&self.triangle_render_pipeline);
@@ -291,7 +292,7 @@ impl<'a> Render<'a> {
                 render_pass.draw_indexed(0..panel_indices.len() as u32, 0, 0..2);
 
                 // ✅ Cursor changes every frame, so we must update the buffer
-                // let new_cursor_vertices = render_cursor(state.mouse_position);
+                let new_cursor_vertices = render_cursor(state.mouse_position, &self.user_render_config.cursor_size);
                 // self.queue.write_buffer(&self.cursor_vertex_buffer, 0, bytemuck::cast_slice(&new_cursor_vertices));
                 // render_pass.set_vertex_buffer(0, self.cursor_vertex_buffer.slice(..));
                 // render_pass.draw(0..4, 0..1); // No index buffer needed, just 4 vertices
@@ -313,31 +314,23 @@ impl<'a> Render<'a> {
     }
 }
 
-fn render_cursor(mouse_pos: (usize, usize)) -> [Vertex; 4] {
-    let mouse_x = max(20, mouse_pos.0);
-    let mouse_y = max(20, mouse_pos.1);
-    let cursor_size = 40;
-    let half_size = cursor_size / 2;
+fn render_cursor(mouse_pos: (usize, usize), cursor_size: &f32) -> [Vertex; 4] {
+    let mouse_x = mouse_pos.0 as f32;
+    let mouse_y = mouse_pos.1 as f32;
+    let half_size = cursor_size / 2.0;
 
     [
-        Vertex::from_uszie(mouse_x - half_size, mouse_y - half_size), // Top-left
-        Vertex::from_uszie(mouse_x + half_size, mouse_y - half_size), // Top-right
-        Vertex::from_uszie(mouse_x + half_size, mouse_y + half_size), // Bottom-right
-        Vertex::from_uszie(mouse_x - half_size, mouse_y + half_size), // Bottom-left
+        Vertex::new(mouse_x - half_size, mouse_y - half_size), // Top-left
+        Vertex::new(mouse_x + half_size, mouse_y - half_size), // Top-right
+        Vertex::new(mouse_x + half_size, mouse_y + half_size), // Bottom-right
+        Vertex::new(mouse_x - half_size, mouse_y + half_size), // Bottom-left
     ]
 }
 
 fn create_cursor_buffer(device: &wgpu::Device) -> wgpu::Buffer {
-    let cursor_vertices = [
-        Vertex::new(-5.0, -5.0), // Example cursor shape
-        Vertex::new(5.0, -5.0),
-        Vertex::new(5.0, 5.0),
-        Vertex::new(-5.0, 5.0),
-    ];
-
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("Cursor Vertex Buffer"),
-        size: (std::mem::size_of::<Vertex>() * cursor_vertices.len()) as wgpu::BufferAddress,
+        size: (std::mem::size_of::<Vertex>() * 4) as wgpu::BufferAddress,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, // COPY_DST so we can update it
         mapped_at_creation: false,
     })
@@ -346,7 +339,7 @@ fn create_cursor_buffer(device: &wgpu::Device) -> wgpu::Buffer {
 fn create_index_buffer(device: &wgpu::Device, max_indices: usize) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("Dynamic Index Buffer"),
-        size: (std::mem::size_of::<u16>() * max_indices) as wgpu::BufferAddress, // Preallocate space
+        size: (size_of::<u32>() * max_indices) as wgpu::BufferAddress, // Preallocate space
         usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST, // COPY_DST allows updates
         mapped_at_creation: false,
     })
