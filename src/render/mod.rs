@@ -1,6 +1,3 @@
 pub mod render;
-pub mod renderer;
-pub(crate) mod buffer;
-mod texture;
-mod camera;
+pub(crate) mod vertex;
 mod space_converters;

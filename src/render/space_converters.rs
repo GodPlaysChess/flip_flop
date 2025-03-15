@@ -1,7 +1,7 @@
 use std::cmp::max;
+
 use crate::events::XY;
 use crate::game_entities::{Board, Cell, Shape};
-use crate::render::buffer::{PANEL_HEIGTH, PANEL_WIDTH};
 
 // the UI contains only visible elements. I.e only things are to be rendered.
 // i.e. if shape is hidden - it's not in the UI. Treat it like intermediate datastructure
@@ -26,12 +26,12 @@ struct MousePosition {
 }
 
 //shapes -> index_buffer
-pub fn render_panel(shapes: &Vec<Shape>) -> Vec<u32> {
+pub fn render_panel(shapes: &Vec<Shape>, panel_width_cols: usize) -> Vec<u32> {
 
     // convert shapes to cells
     let grid = shapes_to_cell_space(shapes);
     // convert grid + dimensions to indices for triangles
-    return to_index_space(grid, PANEL_WIDTH);
+    return to_index_space(grid, panel_width_cols);
     // same thing in the board -> extract to the common thing
 }
 
@@ -104,6 +104,7 @@ pub fn render_board(board: &Board) -> Vec<u32> {
 #[cfg(test)]
 mod tests {
     use crate::game_entities::ShapeType;
+
     use super::*;
 
     #[test]

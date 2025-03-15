@@ -3,12 +3,16 @@ use std::collections::HashMap;
 use std::iter;
 use wgpu::{MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat, TextureUsages};
 use wgpu::util::DeviceExt;
+use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
 // use wgpu_glyph::{ab_glyph, Section, Text};
 use crate::game_entities::{Board, BOARD_SIZE, Cell, GameState, Shape};
-use crate::render::buffer::{generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, PANEL_HEIGTH, PANEL_WIDTH, Vertex};
+use crate::render::vertex::{generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, Vertex};
 use crate::render::space_converters::{render_board, render_panel};
+
+
+const FONT_BYTES: &[u8] = include_bytes!("../../res/DejaVuSans.ttf");
 
 pub struct Render<'a> {
     pub surface: wgpu::Surface<'a>,
@@ -27,15 +31,78 @@ pub struct Render<'a> {
     board_index_buffer: wgpu::Buffer,
     panel_index_buffer: wgpu::Buffer,
 
+    user_render_config: UserRenderConfig,
+
     // glyph_brush: wgpu_glyph::GlyphBrush<()>,
-    staging_belt: wgpu::util::StagingBelt,
+    // staging_belt: wgpu::util::StagingBelt,
 }
 
-const FONT_BYTES: &[u8] = include_bytes!("../../res/DejaVuSans.ttf");
+pub struct UserRenderConfig {
+    pub window_size: PhysicalSize<u32>,
+    // game cell space settings
+    pub panel_cols: usize,
+    pub panel_rows: usize,
+    pub board_size_cols: usize,
+
+    // pixel space settings
+    pub cursor_size: f32,
+    pub cell_size_px: f32,
+    pub board_offset_x_px: f32,
+    pub board_offset_y_px: f32,
+    pub panel_offset_x_px: f32,
+    pub panel_offset_y_px: f32,
+}
+const SCREEN_WIDTH: u32 = 1200;
+const SCREEN_HEIGHT: u32 = 800;
+
+impl Default for UserRenderConfig {
+    fn default() -> Self {
+        Self::new(
+            12,
+            5,
+            10,
+            40.0,
+            30.0,
+            100.0,
+            100.0,
+            100.0,
+        )
+    }
+}
+
+impl UserRenderConfig {
+    pub fn new(
+        panel_cols: usize,
+        panel_rows: usize,
+        board_size: usize,
+        cursor_size: f32,
+        cell_size_px: f32,
+        board_offset_x_px: f32,
+        board_offset_y_px: f32,
+        panel_offset_x_px: f32,
+    ) -> Self {
+        let window_size = PhysicalSize::new(SCREEN_WIDTH, SCREEN_HEIGHT);
+        let panel_offset_y_px = board_offset_y_px + cell_size_px * panel_cols as f32;
+
+        Self {
+            window_size,
+            panel_cols,
+            panel_rows,
+            board_size_cols: board_size,
+            cursor_size,
+            cell_size_px,
+            board_offset_x_px,
+            board_offset_y_px,
+            panel_offset_x_px,
+            panel_offset_y_px, // Correctly computed here
+        }
+    }
+}
+
 
 impl<'a> Render<'a> {
     // Creating some of the wgpu types requires async code
-    pub async fn new(window: &'a Window, size: winit::dpi::PhysicalSize<u32>) -> Render<'a> {
+    pub async fn new(window: &'a Window, render_config: UserRenderConfig) -> Render<'a> {
         println!("Vertex struct size: {}", Vertex::SIZE);
 
         // The instance is a handle to our GPU
@@ -83,8 +150,8 @@ impl<'a> Render<'a> {
             .unwrap_or(surface_caps.formats[0]);
 
         let scale_factor = window.scale_factor(); // Get DPI scale
-        let physical_width = (size.width as f64 * scale_factor) as u32;
-        let physical_height = (size.height as f64 * scale_factor) as u32;
+        let physical_width = (render_config.window_size.width as f64 * scale_factor) as u32;
+        let physical_height = (render_config.window_size.height as f64 * scale_factor) as u32;
 
         let surface_config = SurfaceConfiguration {
             usage: TextureUsages::RENDER_ATTACHMENT,
@@ -111,8 +178,8 @@ impl<'a> Render<'a> {
         let point_render_pipeline = create_pipeline(&device, &render_pipeline_layout, &vertex_shader_module, &fragment_shader_module, surface_config.format.clone(), wgpu::PrimitiveTopology::PointList);
         let triangle_render_pipeline = create_pipeline(&device, &render_pipeline_layout, &vertex_shader_module, &fragment_shader_module, surface_config.format.clone(), wgpu::PrimitiveTopology::TriangleList);
 
-        let board_vertices = normalize_screen_to_ndc(generate_board_vertices(), size);
-        let panel_vertices = normalize_screen_to_ndc(generate_panel_vertices(), size);
+        let board_vertices = normalize_screen_to_ndc(generate_board_vertices(&render_config), render_config.window_size);
+        let panel_vertices = normalize_screen_to_ndc(generate_panel_vertices(&render_config), render_config.window_size);
 
 
         let board_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -128,9 +195,6 @@ impl<'a> Render<'a> {
             contents: bytemuck::cast_slice(&panel_vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
-        for &index in &vec![0, 2, 33, 12, 40, 3] {
-            println!("Panel index {} -> {:?}", index, panel_vertices.get(index as usize));
-        }
 
         let cursor_vertex_buffer = create_cursor_buffer(&device);
 
@@ -144,7 +208,7 @@ impl<'a> Render<'a> {
         // let font = ab_glyph::FontArc::try_from_slice(FONT_BYTES).unwrap();
         // let glyph_brush =
         //     wgpu_glyph::GlyphBrushBuilder::using_font(font).build(&device, config.format);
-        let staging_belt = wgpu::util::StagingBelt::new(1024);
+        // let staging_belt = wgpu::util::StagingBelt::new(1024);
 
 
         Self {
@@ -160,13 +224,13 @@ impl<'a> Render<'a> {
             cursor_vertex_buffer,
             board_index_buffer,
             panel_index_buffer,
+            user_render_config: render_config,
             // glyph_brush,
-            staging_belt,
+            // staging_belt,
         }
     }
 
-
-    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+    pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.surface_config.width = new_size.width;
             self.surface_config.height = new_size.height;
@@ -180,13 +244,13 @@ impl<'a> Render<'a> {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         //todo add cursor shadow
-        let board_indicies = render_board(&state.board);
-        let panel_indicies: Vec<u32> = render_panel(&state.shape_choice);
-
-        //;
+        let board_indices = render_board(&state.board);
+        let panel_indices = render_panel(&state.shape_choice, self.user_render_config.panel_cols);
 
         match self.surface.get_current_texture() {
             Ok(frame) => {
+                let board_vertex_number = (self.user_render_config.board_size_cols + 1) * (self.user_render_config.board_size_cols + 1);
+                let panel_vertex_number = (self.user_render_config.panel_cols + 1) * (self.user_render_config.panel_rows + 1);
                 let view = frame.texture.create_view(&Default::default());
                 let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Main Render Pass"),
@@ -204,27 +268,27 @@ impl<'a> Render<'a> {
 
                 // DRAW GRID
                 render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
-                render_pass.draw(0..((BOARD_SIZE + 1) * (BOARD_SIZE + 1)) as u32, 0..1);
+                render_pass.draw(0..board_vertex_number as u32, 0..1);
 
                 render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
-                render_pass.draw(0..((PANEL_HEIGTH + 1) * (PANEL_WIDTH + 1)) as u32, 1..2);
+                render_pass.draw(0..panel_vertex_number as u32, 1..2);
 
                 // DRAW cells
                 render_pass.set_pipeline(&self.triangle_render_pipeline);
                 //todo If board changed
                 // ✅ Upload new index buffer to GPU
                 render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
-                self.queue.write_buffer(&self.board_index_buffer, 0, bytemuck::cast_slice(&board_indicies));
+                self.queue.write_buffer(&self.board_index_buffer, 0, bytemuck::cast_slice(&board_indices));
                 render_pass.set_index_buffer(self.board_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(0..board_indicies.len() as u32, 0, 0..1);
+                render_pass.draw_indexed(0..board_indices.len() as u32, 0, 0..1);
 
                 // ✅ Bind the panel buffers ONCE, then draw all panel elements
                 // render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
                 //todo If panel changed
                 render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
-                self.queue.write_buffer(&self.panel_index_buffer, 0, bytemuck::cast_slice(&panel_indicies));
+                self.queue.write_buffer(&self.panel_index_buffer, 0, bytemuck::cast_slice(&panel_indices));
                 render_pass.set_index_buffer(self.panel_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(0..panel_indicies.len() as u32, 0, 0..2);
+                render_pass.draw_indexed(0..panel_indices.len() as u32, 0, 0..2);
 
                 // ✅ Cursor changes every frame, so we must update the buffer
                 // let new_cursor_vertices = render_cursor(state.mouse_position);
@@ -234,7 +298,7 @@ impl<'a> Render<'a> {
 
                 drop(render_pass);
 
-                self.staging_belt.finish();
+                // self.staging_belt.finish();
                 self.queue.submit(iter::once(encoder.finish()));
                 frame.present();
             }

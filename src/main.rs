@@ -1,5 +1,4 @@
 use winit::{event::*, event_loop::EventLoop, keyboard::{KeyCode, PhysicalKey}, window::WindowBuilder};
-use winit::dpi::PhysicalSize;
 use winit::event_loop::EventLoopWindowTarget;
 
 use render::render::Render;
@@ -7,6 +6,7 @@ use render::render::Render;
 use crate::events::Event::{Resize, ScoreUpdated};
 use crate::game_entities::{Cell, GameState};
 use crate::input::Input;
+use crate::render::render::UserRenderConfig;
 
 mod game_entities;
 mod events;
@@ -16,13 +16,13 @@ mod system;
 mod input;
 mod sound;
 
-const SCREEN_WIDTH: usize = 1200;
-const SCREEN_HEIGHT: usize = 800;
 
 pub async fn run() {
+    let config = UserRenderConfig::default();
+
     env_logger::init();
     let event_loop = EventLoop::new().unwrap();
-    let size = PhysicalSize::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32);
+    let size = config.window_size;
     let window = WindowBuilder::new()
         .with_visible(false)
         .with_title("flip flop")
@@ -32,7 +32,7 @@ pub async fn run() {
     // todo will change it to better version of cursor
     // window.set_cursor_visible(false);
 
-    let mut render = pollster::block_on(Render::new(&window, size));
+    let mut render = pollster::block_on(Render::new(&window, config));
     let mut game = GameState::new();
     game.board.set_cell(4, 3, Cell::Filled);
     game.board.set_cell(7, 1, Cell::Filled);

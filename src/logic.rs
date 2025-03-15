@@ -4,13 +4,12 @@ use crate::events::{BoardUpdate, CellCoord, Event};
 use crate::events::Event::{BoardUpdated, ScoreUpdated, ShapeChoiceUpdate};
 use crate::game_entities::{BOARD_SIZE, Cell, CELL_SIZE, GameState, Shape, ShapeState};
 use crate::game_entities::ShapeState::VISIBLE;
-use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 pub const SHAPE_LINE_COORD_X: usize = 100;
 pub const SHAPE_LINE_COORD_Y: usize = 500;
 const SPACE_BETWEEN_CELLS: usize = 5;
-const WIDTH_CELLS: usize = (SCREEN_WIDTH - SHAPE_LINE_COORD_X) / CELL_SIZE;
-const HEIGHT_CELLS: usize = (SCREEN_HEIGHT - SHAPE_LINE_COORD_Y) / CELL_SIZE;
+const WIDTH_CELLS: usize = 40;
+// const HEIGHT_CELLS: usize = (SCREEN_HEIGHT - SHAPE_LINE_COORD_Y) / CELL_SIZE;
 // settings
 const N_SHAPES_PER_TURN: usize = 3;
 
