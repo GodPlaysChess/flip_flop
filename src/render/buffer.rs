@@ -9,6 +9,9 @@ pub const BOARD_OFFSET_Y: f32 = 100.0;
 pub const PANEL_OFFSET_X: f32 = 100.0;
 pub const PANEL_OFFSET_Y: f32 = BOARD_OFFSET_Y + CELL_SIZE * 12.0;
 
+pub const PANEL_HEIGTH: usize = 5;
+pub const PANEL_WIDTH: usize = 12;
+
 
 #[derive(Copy, Clone, Debug)]
 pub struct Vertex {
@@ -25,7 +28,7 @@ impl Vertex {
         array_stride: Self::SIZE,
         step_mode: wgpu::VertexStepMode::Vertex,
         attributes: &wgpu::vertex_attr_array![
-            0 => Float32x2
+            0 => Float32x2,
         ],
     };
 
@@ -41,7 +44,7 @@ impl Vertex {
 pub fn generate_board_vertices() -> Vec<Vertex> {
     let mut vertices = Vec::new();
 
-    for row in 0..=BOARD_SIZE {  // We need 11 rows (0-10) for 10 cells
+    for row in 0..=BOARD_SIZE {
         for col in 0..=BOARD_SIZE {
             let x = col as f32 * CELL_SIZE + BOARD_OFFSET_X;
             let y = row as f32 * CELL_SIZE + BOARD_OFFSET_Y;
@@ -70,14 +73,14 @@ pub fn normalize_screen_to_ndc(v: Vec<Vertex>, size: PhysicalSize<u32>) -> Vec<V
 }
 pub fn generate_panel_vertices() -> Vec<Vertex> {
     let mut vertices = Vec::new();
-    for row in 0..=5 {  // We need 11 rows (0-10) for 10 cells
-        for col in 0..=12 {
+    for row in 0..=PANEL_HEIGTH {
+        for col in 0..=PANEL_WIDTH {
             let x = col as f32 * CELL_SIZE + PANEL_OFFSET_X;
             let y = row as f32 * CELL_SIZE + PANEL_OFFSET_Y;
             vertices.push(Vertex::new(x, y));
         }
     }
-
+    println!("Generated {:?} panel vertices", vertices.len());
     vertices
 }
 

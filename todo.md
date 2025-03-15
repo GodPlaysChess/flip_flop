@@ -7,3 +7,10 @@
 - further optimisations
 - levels
 - spicy objects
+
+
+
+
+===================== WGPU
+- refactor to Game / UI / Rendering
+- currently code is disorganised

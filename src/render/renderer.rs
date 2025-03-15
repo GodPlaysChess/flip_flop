@@ -1,6 +1,6 @@
 use rusttype::{Font, point, Scale};
 
-use crate::{HEIGHT, WIDTH};
+use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use crate::events::XY;
 use crate::game_entities::{BOARD_SIZE, Cell, CELL_SIZE, GameState, Shape, ShapeType};
 use crate::game_entities::ShapeState::VISIBLE;
@@ -55,7 +55,7 @@ pub fn draw_mouse_click(x_y: (usize, usize), buffer: &mut Vec<u32>) {
         for j in 0..10 {
             let y = x_y.1 + i;
             let x = x_y.0 + j;
-            buffer[(y * WIDTH + x) % (WIDTH * HEIGHT)] = GREEN
+            buffer[(y * SCREEN_WIDTH + x) % (SCREEN_WIDTH * SCREEN_HEIGHT)] = GREEN
         }
     }
 }
@@ -116,8 +116,8 @@ pub fn draw_rect(x: usize, y: usize, width: usize, height: usize, color: u32, bu
         for col in 0..width {
             let px = x + col;
             let py = y + row;
-            if px < WIDTH && py < HEIGHT {
-                buffer[py * WIDTH + px] = color;
+            if px < SCREEN_WIDTH && py < SCREEN_HEIGHT {
+                buffer[py * SCREEN_WIDTH + px] = color;
             }
         }
     }

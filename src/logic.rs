@@ -4,13 +4,15 @@ use crate::events::{BoardUpdate, CellCoord, Event};
 use crate::events::Event::{BoardUpdated, ScoreUpdated, ShapeChoiceUpdate};
 use crate::game_entities::{BOARD_SIZE, Cell, CELL_SIZE, GameState, Shape, ShapeState};
 use crate::game_entities::ShapeState::VISIBLE;
-use crate::{HEIGHT, N_SHAPES_PER_TURN, WIDTH};
+use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 pub const SHAPE_LINE_COORD_X: usize = 100;
 pub const SHAPE_LINE_COORD_Y: usize = 500;
 const SPACE_BETWEEN_CELLS: usize = 5;
-const WIDTH_CELLS: usize = (WIDTH - SHAPE_LINE_COORD_X) / CELL_SIZE;
-const HEIGHT_CELLS: usize = (HEIGHT - SHAPE_LINE_COORD_Y) / CELL_SIZE;
+const WIDTH_CELLS: usize = (SCREEN_WIDTH - SHAPE_LINE_COORD_X) / CELL_SIZE;
+const HEIGHT_CELLS: usize = (SCREEN_HEIGHT - SHAPE_LINE_COORD_Y) / CELL_SIZE;
+// settings
+const N_SHAPES_PER_TURN: usize = 3;
 
 //After placing a shape, only check rows and columns affected by the shape.
 //Use a bitmask for each row and column to track filled cells more efficiently.
@@ -116,7 +118,7 @@ fn is_mouse_over_shape(mouse: (usize, usize), shapes: &Vec<Shape>) -> Option<usi
     let relative_y = my - SHAPE_LINE_COORD_Y;
     // converting to the grid space
     let (col, row) = (relative_x / CELL_SIZE, relative_y / CELL_SIZE);
-    let shapes_grid = as_grid(shapes);
+    let shapes_grid = shapes_as_grid(shapes);
     let ix = rc_to_ix(row, col);
 
     return shapes_grid.get(&ix)
@@ -124,8 +126,7 @@ fn is_mouse_over_shape(mouse: (usize, usize), shapes: &Vec<Shape>) -> Option<usi
         .filter(|i| shapes.get(*i).is_some_and(|s| s.state == VISIBLE));
 }
 
-// converts shape choice to grid-like representation
-fn as_grid(shapes: &Vec<Shape>) -> HashMap<usize, usize> {
+fn shapes_as_grid(shapes: &Vec<Shape>) -> HashMap<usize, usize> {
     let mut result = HashMap::new();
     for (i, s) in shapes.iter().enumerate() {
         for (dx, dy) in Shape::cells(&s.kind) {

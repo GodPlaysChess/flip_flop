@@ -4,7 +4,7 @@ use crate::events::{BoardUpdate, CellCoord, Event};
 use crate::events::Event::BoardUpdated;
 use crate::game_entities::ShapeState::VISIBLE;
 
-pub const BOARD_SIZE: usize = 12; // 12x12 board
+pub const BOARD_SIZE: usize = 10; //
 pub const CELL_SIZE: usize = 40; // Size of each cell in pixels
 
 #[derive(Clone, Copy, PartialEq, Debug)]

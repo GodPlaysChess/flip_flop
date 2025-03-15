@@ -1,4 +1,5 @@
 use std::cmp::max;
+use std::collections::HashMap;
 use std::iter;
 use wgpu::{MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat, TextureUsages};
 use wgpu::util::DeviceExt;
@@ -6,7 +7,8 @@ use winit::window::Window;
 
 // use wgpu_glyph::{ab_glyph, Section, Text};
 use crate::game_entities::{Board, BOARD_SIZE, Cell, GameState, Shape};
-use crate::render::buffer::{generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, Vertex};
+use crate::render::buffer::{generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, PANEL_HEIGTH, PANEL_WIDTH, Vertex};
+use crate::render::space_converters::{render_board, render_panel};
 
 pub struct Render<'a> {
     pub surface: wgpu::Surface<'a>,
@@ -34,6 +36,8 @@ const FONT_BYTES: &[u8] = include_bytes!("../../res/DejaVuSans.ttf");
 impl<'a> Render<'a> {
     // Creating some of the wgpu types requires async code
     pub async fn new(window: &'a Window, size: winit::dpi::PhysicalSize<u32>) -> Render<'a> {
+        println!("Vertex struct size: {}", Vertex::SIZE);
+
         // The instance is a handle to our GPU
         // Backends::all => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -87,7 +91,7 @@ impl<'a> Render<'a> {
             format: surface_format,
             width: physical_width,
             height: physical_height,
-            present_mode: surface_caps.present_modes[0],
+            present_mode: wgpu::PresentMode::Fifo,
             desired_maximum_frame_latency: 2,
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
@@ -110,17 +114,23 @@ impl<'a> Render<'a> {
         let board_vertices = normalize_screen_to_ndc(generate_board_vertices(), size);
         let panel_vertices = normalize_screen_to_ndc(generate_panel_vertices(), size);
 
+
         let board_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Board Vertex Buffer"),
             contents: bytemuck::cast_slice(&board_vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
+        // panel_vertices.iter().for_each(|p| println!("panel vertex: {:?}", p));
+
         let panel_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Panel Vertex Buffer"),
             contents: bytemuck::cast_slice(&panel_vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
+        for &index in &vec![0, 2, 33, 12, 40, 3] {
+            println!("Panel index {} -> {:?}", index, panel_vertices.get(index as usize));
+        }
 
         let cursor_vertex_buffer = create_cursor_buffer(&device);
 
@@ -171,10 +181,9 @@ impl<'a> Render<'a> {
 
         //todo add cursor shadow
         let board_indicies = render_board(&state.board);
-        // let board_indicies: Vec<u32> = vec![0, 13, 14/*, 0, 14, 1, 20, 33, 34, 20, 34, 21, 43, 56, 57, 43, 57, 44*/];
-        // let board_indicies = vec![1u32, 112u32,120u32];
+        let panel_indicies: Vec<u32> = render_panel(&state.shape_choice);
 
-        let panel_indicies = render_panel(&state.shape_choice);
+        //;
 
         match self.surface.get_current_texture() {
             Ok(frame) => {
@@ -190,17 +199,21 @@ impl<'a> Render<'a> {
                     timestamp_writes: None,
                     occlusion_query_set: None,
                 });
+                render_pass.set_pipeline(&self.point_render_pipeline);
                 // ✅ Bind the board buffers ONCE, then draw all board elements
-                render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
 
                 // DRAW GRID
-                render_pass.set_pipeline(&self.point_render_pipeline);
-                render_pass.draw(0..(BOARD_SIZE*BOARD_SIZE) as u32 - 1, 0..1);
+                render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
+                render_pass.draw(0..((BOARD_SIZE + 1) * (BOARD_SIZE + 1)) as u32, 0..1);
+
+                render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
+                render_pass.draw(0..((PANEL_HEIGTH + 1) * (PANEL_WIDTH + 1)) as u32, 1..2);
 
                 // DRAW cells
                 render_pass.set_pipeline(&self.triangle_render_pipeline);
                 //todo If board changed
                 // ✅ Upload new index buffer to GPU
+                render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
                 self.queue.write_buffer(&self.board_index_buffer, 0, bytemuck::cast_slice(&board_indicies));
                 render_pass.set_index_buffer(self.board_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..board_indicies.len() as u32, 0, 0..1);
@@ -208,9 +221,10 @@ impl<'a> Render<'a> {
                 // ✅ Bind the panel buffers ONCE, then draw all panel elements
                 // render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
                 //todo If panel changed
-                // self.queue.write_buffer(&self.panel_index_buffer, 0, bytemuck::cast_slice(&board_indicies));
-                // render_pass.set_index_buffer(self.panel_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                // render_pass.draw_indexed(0..panel_indicies.len() as u32, 0, 0..1);
+                render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
+                self.queue.write_buffer(&self.panel_index_buffer, 0, bytemuck::cast_slice(&panel_indicies));
+                render_pass.set_index_buffer(self.panel_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                render_pass.draw_indexed(0..panel_indicies.len() as u32, 0, 0..2);
 
                 // ✅ Cursor changes every frame, so we must update the buffer
                 // let new_cursor_vertices = render_cursor(state.mouse_position);
@@ -234,66 +248,6 @@ impl<'a> Render<'a> {
         }
     }
 }
-
-//todo draw panel
-fn render_panel(shapes: &Vec<Shape>) -> Vec<u32> {
-    let mut indices = Vec::new();
-    // let board_size = board.grid.len();
-    //
-    // for y in 0..board_size {
-    //     for x in 0..board_size {
-    //         if let Cell::Filled = board.grid[y][x] {
-    //             let top_left = (y * (board_size + 1) + x) as u32;
-    //             let top_right = top_left + 1;
-    //             let bottom_left = top_left + (board_size as u32 + 1);
-    //             let bottom_right = bottom_left + 1;
-    //
-    //             // Two triangles per cell (diagonal split)
-    //             indices.extend_from_slice(&[
-    //                 top_left, bottom_left, bottom_right, // First triangle
-    //                 top_left, bottom_right, top_right,  // Second triangle
-    //             ]);
-    //         }
-    //     }
-    // }
-
-    indices
-}
-
-pub fn render_board(board: &Board) -> Vec<u32> {
-    let mut indices = Vec::new();
-    let board_size = board.grid.len();
-
-    /*
-             0   1   2   3
-               C0  C1  C2
-             4   5   6   7
-               C3  C4  C5
-             8   9   10  11
-               C6  C7  C8
-             12  13  14  15
-
-     */
-    for row in 0..board_size {
-        for col in 0..board_size {
-            if let Cell::Filled = board.grid[row][col] {
-                let top_left = (row * (board_size + 1) + col) as u32;
-                let top_right = top_left + 1;
-                let bottom_left = top_left + (board_size + 1) as u32;
-                let bottom_right = bottom_left + 1;
-
-                // Two triangles per cell (diagonal split)
-                indices.extend_from_slice(&[
-                    top_left, bottom_left, bottom_right, // First triangle
-                    top_left, bottom_right, top_right,  // Second triangle
-                ]);
-            }
-        }
-    }
-
-    indices
-}
-
 
 fn render_cursor(mouse_pos: (usize, usize)) -> [Vertex; 4] {
     let mouse_x = max(20, mouse_pos.0);

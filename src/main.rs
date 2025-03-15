@@ -16,17 +16,13 @@ mod system;
 mod input;
 mod sound;
 
-const WIDTH: usize = 1200;
-const HEIGHT: usize = 800;
-
-// settings
-const TARGET_FPS: f32 = 240.0;
-const N_SHAPES_PER_TURN: usize = 3;
+const SCREEN_WIDTH: usize = 1200;
+const SCREEN_HEIGHT: usize = 800;
 
 pub async fn run() {
     env_logger::init();
     let event_loop = EventLoop::new().unwrap();
-    let size = PhysicalSize::new(1200, 800);
+    let size = PhysicalSize::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32);
     let window = WindowBuilder::new()
         .with_visible(false)
         .with_title("flip flop")
@@ -85,12 +81,11 @@ pub async fn run() {
                 }, ..
             } => {
                 cursor_position = (position.x, position.y);
-                println!("Cursor moved to: {:?}", cursor_position);
+                // println!("Cursor moved to: {:?}", cursor_position);
             }
             Event::WindowEvent {
                 event: WindowEvent::RedrawRequested, ..
             } => {
-                let dt = last_time.elapsed();
                 last_time = instant::Instant::now();
                 window.request_redraw();
 
