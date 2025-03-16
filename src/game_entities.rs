@@ -25,9 +25,9 @@ impl Board {
     }
 
     // Helper to fill a specific cell (for demo purposes)
-    pub fn set_cell(&mut self, x: usize, y: usize, cell: Cell) {
-        if x < BOARD_SIZE && y < BOARD_SIZE {
-            self.grid[y][x] = cell;
+    pub fn set_cell(&mut self, col: usize, row: usize, cell: Cell) {
+        if col < BOARD_SIZE && row < BOARD_SIZE {
+            self.grid[col][row] = cell;
         }
     }
 }
