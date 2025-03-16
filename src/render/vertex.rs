@@ -1,9 +1,6 @@
 use winit::dpi::PhysicalSize;
 use crate::render::render::UserRenderConfig;
 
-
-
-
 #[derive(Copy, Clone, Debug)]
 pub struct Vertex {
     #[allow(dead_code)]
@@ -76,3 +73,9 @@ pub fn generate_board_vertices(user_render_config: &UserRenderConfig) -> Vec<Ver
     vertices
 }
 
+#[repr(u32)] // Ensures it's represented as a u32 in memory
+#[derive(Clone, Copy, Debug)]
+pub enum CursorState {
+    NotACursor = 0,
+    Cursor = 1,
+}

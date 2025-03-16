@@ -1,6 +1,7 @@
 use std::cmp::max;
 use std::collections::HashMap;
 use std::iter;
+use bytemuck::cast_slice;
 use wgpu::{MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat, TextureUsages};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
@@ -8,7 +9,7 @@ use winit::window::Window;
 
 // use wgpu_glyph::{ab_glyph, Section, Text};
 use crate::game_entities::{Board, BOARD_SIZE, Cell, GameState, Shape};
-use crate::render::vertex::{generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, Vertex};
+use crate::render::vertex::{CursorState, generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, Vertex};
 use crate::render::space_converters::{render_board, render_panel};
 
 
@@ -127,13 +128,19 @@ impl<'a> Render<'a> {
 
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::empty(),
+                required_features: wgpu::Features::PUSH_CONSTANTS,
                 // WebGL doesn't support all of wgpu's features, so if
                 // we're building for the web, we'll have to disable some.
                 required_limits: if cfg!(target_arch = "wasm32") {
-                    wgpu::Limits::downlevel_webgl2_defaults()
+                    wgpu::Limits {
+                        max_push_constant_size: 128,
+                        ..wgpu::Limits::downlevel_webgl2_defaults()
+                    }
                 } else {
-                    wgpu::Limits::default()
+                    wgpu::Limits {
+                        max_push_constant_size: 128,
+                        ..Default::default()
+                    }
                 },
                 label: None,
                 memory_hints: MemoryHints::Performance,
@@ -167,10 +174,14 @@ impl<'a> Render<'a> {
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
+                label: Some("Triangle render Pipeline Layout"),
                 bind_group_layouts: &[],
-                push_constant_ranges: &[],
+                push_constant_ranges: &[wgpu::PushConstantRange {
+                    stages: wgpu::ShaderStages::FRAGMENT,
+                    range: 0..4,
+                }],
             });
+
 
         let vertex_shader_module = device.create_shader_module(wgpu::include_wgsl!("../../res/shaders/textured.vert.wgsl"));
         let fragment_shader_module = device.create_shader_module(wgpu::include_wgsl!("../../res/shaders/textured.frag.wgsl"));
@@ -184,15 +195,13 @@ impl<'a> Render<'a> {
 
         let board_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Board Vertex Buffer"),
-            contents: bytemuck::cast_slice(&board_vertices),
+            contents: cast_slice(&board_vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        // panel_vertices.iter().for_each(|p| println!("panel vertex: {:?}", p));
-
         let panel_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Panel Vertex Buffer"),
-            contents: bytemuck::cast_slice(&panel_vertices),
+            contents: cast_slice(&panel_vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
@@ -204,7 +213,7 @@ impl<'a> Render<'a> {
         let panel_index_buffer = create_index_buffer(&device, 120);
 
         surface.configure(&device, &surface_config);
-        let size = surface.get_current_texture().unwrap().texture.size();
+
 
         // let font = ab_glyph::FontArc::try_from_slice(FONT_BYTES).unwrap();
         // let glyph_brush =
@@ -264,22 +273,24 @@ impl<'a> Render<'a> {
                     timestamp_writes: None,
                     occlusion_query_set: None,
                 });
-                render_pass.set_pipeline(&self.point_render_pipeline);
-                // ✅ Bind the board buffers ONCE, then draw all board elements
 
                 // DRAW GRID
+                render_pass.set_pipeline(&self.point_render_pipeline);
+                render_pass.set_push_constants(wgpu::ShaderStages::FRAGMENT, 0, cast_slice(&[CursorState::NotACursor as u32]));
+
                 render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
-                render_pass.draw(0..board_vertex_number as u32, 0..1);
+                render_pass.draw(0..board_vertex_number as u32, 0..1); // draw just indices
 
                 render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
                 render_pass.draw(0..panel_vertex_number as u32, 0..1);
 
-                // DRAW cells
+                // DRAW cells: board and panel
                 render_pass.set_pipeline(&self.triangle_render_pipeline);
+
+
                 //todo If board changed
-                // ✅ Upload new index buffer to GPU
                 render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
-                self.queue.write_buffer(&self.board_index_buffer, 0, bytemuck::cast_slice(&board_indices));
+                self.queue.write_buffer(&self.board_index_buffer, 0, cast_slice(&board_indices));
                 render_pass.set_index_buffer(self.board_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..board_indices.len() as u32, 0, 0..1);
 
@@ -287,15 +298,19 @@ impl<'a> Render<'a> {
                 // render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
                 //todo If panel changed
                 render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
-                self.queue.write_buffer(&self.panel_index_buffer, 0, bytemuck::cast_slice(&panel_indices));
+                self.queue.write_buffer(&self.panel_index_buffer, 0, cast_slice(&panel_indices));
                 render_pass.set_index_buffer(self.panel_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..panel_indices.len() as u32, 0, 0..2);
 
                 // ✅ Cursor changes every frame, so we must update the buffer
                 let new_cursor_vertices = render_cursor(state.mouse_position, &self.user_render_config.cursor_size);
-                // self.queue.write_buffer(&self.cursor_vertex_buffer, 0, bytemuck::cast_slice(&new_cursor_vertices));
-                // render_pass.set_vertex_buffer(0, self.cursor_vertex_buffer.slice(..));
-                // render_pass.draw(0..4, 0..1); // No index buffer needed, just 4 vertices
+                self.queue.write_buffer(&self.cursor_vertex_buffer, 0, bytemuck::cast_slice(&new_cursor_vertices));
+                render_pass.set_vertex_buffer(0, self.cursor_vertex_buffer.slice(..));
+
+                render_pass.set_push_constants(wgpu::ShaderStages::FRAGMENT, 0, cast_slice(&[CursorState::Cursor as u32]));
+
+
+                render_pass.draw(0..4, 0..1); // No index buffer needed, just 4 vertices
 
                 drop(render_pass);
 
@@ -364,7 +379,7 @@ fn create_pipeline(device: &wgpu::Device,
             module: &fragment_shader_module,
             entry_point: Some("fs_main"),
             targets: &[Some(wgpu::ColorTargetState {
-                format: format,
+                format,
                 blend: Some(wgpu::BlendState {
                     alpha: wgpu::BlendComponent::REPLACE,
                     color: wgpu::BlendComponent::REPLACE,
@@ -375,7 +390,7 @@ fn create_pipeline(device: &wgpu::Device,
         }),
 
         primitive: wgpu::PrimitiveState {
-            topology: topology,
+            topology,
             strip_index_format: None,
             front_face: wgpu::FrontFace::Ccw, // 2.
             cull_mode: Some(wgpu::Face::Back),
