@@ -2,6 +2,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::iter;
 use bytemuck::cast_slice;
+use cgmath::Vector2;
 use wgpu::{MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat, TextureUsages};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
@@ -295,7 +296,6 @@ impl<'a> Render<'a> {
                 render_pass.draw_indexed(0..board_indices.len() as u32, 0, 0..1);
 
                 // ✅ Bind the panel buffers ONCE, then draw all panel elements
-                // render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
                 //todo If panel changed
                 render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
                 self.queue.write_buffer(&self.panel_index_buffer, 0, cast_slice(&panel_indices));
@@ -303,14 +303,11 @@ impl<'a> Render<'a> {
                 render_pass.draw_indexed(0..panel_indices.len() as u32, 0, 0..2);
 
                 // ✅ Cursor changes every frame, so we must update the buffer
-                let new_cursor_vertices = render_cursor(state.mouse_position, &self.user_render_config.cursor_size);
-                self.queue.write_buffer(&self.cursor_vertex_buffer, 0, bytemuck::cast_slice(&new_cursor_vertices));
-                render_pass.set_vertex_buffer(0, self.cursor_vertex_buffer.slice(..));
-
                 render_pass.set_push_constants(wgpu::ShaderStages::FRAGMENT, 0, cast_slice(&[CursorState::Cursor as u32]));
-
-
-                render_pass.draw(0..4, 0..1); // No index buffer needed, just 4 vertices
+                let new_cursor_vertices = render_cursor(&state.mouse_position, &self.user_render_config.cursor_size, &self.user_render_config.window_size);
+                self.queue.write_buffer(&self.cursor_vertex_buffer, 0, cast_slice(&new_cursor_vertices));
+                render_pass.set_vertex_buffer(0, self.cursor_vertex_buffer.slice(..));
+                render_pass.draw(0..6, 0..1); // No index buffer needed, just 4 vertices
 
                 drop(render_pass);
 
@@ -329,23 +326,27 @@ impl<'a> Render<'a> {
     }
 }
 
-fn render_cursor(mouse_pos: (usize, usize), cursor_size: &f32) -> [Vertex; 4] {
+fn render_cursor(mouse_pos: &(usize, usize), cursor_size: &f32, physical_size: &PhysicalSize<u32>) -> [Vertex; 6] {
     let mouse_x = mouse_pos.0 as f32;
     let mouse_y = mouse_pos.1 as f32;
     let half_size = cursor_size / 2.0;
 
+
+    let bot_left = Vertex::ndc_vertex(mouse_x - half_size, mouse_y - half_size, physical_size, true);
+    let bot_right = Vertex::ndc_vertex(mouse_x + half_size, mouse_y - half_size, physical_size, true);
+    let top_right = Vertex::ndc_vertex(mouse_x + half_size, mouse_y + half_size, physical_size, true);
+    let top_left = Vertex::ndc_vertex(mouse_x - half_size, mouse_y + half_size, physical_size, true);
     [
-        Vertex::new(mouse_x - half_size, mouse_y - half_size), // Top-left
-        Vertex::new(mouse_x + half_size, mouse_y - half_size), // Top-right
-        Vertex::new(mouse_x + half_size, mouse_y + half_size), // Bottom-right
-        Vertex::new(mouse_x - half_size, mouse_y + half_size), // Bottom-left
+        bot_right, bot_left, top_left,
+        bot_right, top_left, top_right
     ]
 }
 
 fn create_cursor_buffer(device: &wgpu::Device) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("Cursor Vertex Buffer"),
-        size: (std::mem::size_of::<Vertex>() * 4) as wgpu::BufferAddress,
+        // 6 vertices because of quad. If switch to index rendering - could keep it as 4
+        size: (size_of::<Vertex>() * 6) as wgpu::BufferAddress,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, // COPY_DST so we can update it
         mapped_at_creation: false,
     })

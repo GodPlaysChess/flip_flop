@@ -27,21 +27,28 @@ impl Vertex {
     pub fn from_uszie(x: usize, y: usize) -> Self {
         Self { position: (x as f32, y as f32).into() }
     }
+
+    pub fn ndc_vertex(x: f32, y: f32, size: &PhysicalSize<u32>, clamped: bool) -> Self {
+        let width = size.width as f32;
+        let height = size.height as f32;
+        let ndc_x = (x / width) * 2.0 - 1.0;
+        let ndc_y = 1.0 - (y / height) * 2.0; // Flip Y-axis
+        if clamped {
+            Self::new(ndc_x.max(-1.0).min(1.0), ndc_y.max(-1.0).min(1.0))
+        } else {
+            Self::new(ndc_x, ndc_y)
+
+        }
+    }
+
 }
 
-pub fn normalize_screen_to_ndc(v: Vec<Vertex>, size: PhysicalSize<u32>) -> Vec<Vertex> {
-    let width = size.width as f32;
-    let height = size.height as f32;
-    // let aspect_ratio = screen_width as f32 / screen_height as f32;
 
+
+pub fn normalize_screen_to_ndc(v: Vec<Vertex>, size: PhysicalSize<u32>) -> Vec<Vertex> {
     v.into_iter()
         .map(|vertex| {
-            let ndc_x = (vertex.position.x / width) * 2.0 - 1.0;
-            let ndc_y = 1.0 - (vertex.position.y / height) * 2.0; // Flip Y-axis
-
-            Vertex {
-                position: cgmath::Vector2::new(ndc_x, ndc_y),
-            }
+            Vertex::ndc_vertex(vertex.position.x, vertex.position.y, &size, false)
         })
         .collect()
 }

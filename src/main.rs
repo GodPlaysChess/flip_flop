@@ -29,8 +29,7 @@ pub async fn run() {
         .with_inner_size(size)
         .build(&event_loop).unwrap();
 
-    // todo will change it to better version of cursor
-    // window.set_cursor_visible(false);
+    window.set_cursor_visible(false);
 
     let mut render = pollster::block_on(Render::new(&window, config));
     let mut game = GameState::new();
@@ -81,7 +80,8 @@ pub async fn run() {
                 }, ..
             } => {
                 cursor_position = (position.x, position.y);
-                // println!("Cursor moved to: {:?}", cursor_position);
+                println!("mouse: ({:?}, {:?})", position.x as usize, position.y as usize);
+                game.mouse_position = (position.x as usize, position.y as usize);
             }
             Event::WindowEvent {
                 event: WindowEvent::RedrawRequested, ..
