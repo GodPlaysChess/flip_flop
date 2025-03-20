@@ -6,7 +6,7 @@ pub enum Event {
     ScoreUpdated(u32),
     BoardUpdated(Vec<BoardUpdate>),
     // shape select/deselect (disappearance from the shapes list)
-    ShapeChoiceUpdate,
+    ShapeSelected(usize),
     // -- foreground events
     // mouse moved with shape selected
     // board highlight
@@ -18,7 +18,7 @@ pub enum Event {
 }
 
 // pixel coordinates
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct XY(pub usize, pub usize);
 
 // cell coordinate on the board, i.e. row, col pair.

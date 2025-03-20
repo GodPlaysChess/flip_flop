@@ -12,5 +12,10 @@
 
 
 ===================== WGPU
-- refactor to Game / UI / Rendering
++ refactor to Game / UI / Rendering
+- click on the shape to select
+- cursor becomes the shape
+- shape over the board checks if we can place it
+- clicking places the shape
+
 - currently code is disorganised

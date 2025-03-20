@@ -7,6 +7,7 @@ use crate::events::Event::{Resize, ScoreUpdated};
 use crate::game_entities::{Cell, GameState};
 use crate::input::Input;
 use crate::render::render::UserRenderConfig;
+use crate::system::{PlacementSystem, System};
 
 mod game_entities;
 mod events;
@@ -31,12 +32,11 @@ pub async fn run() {
 
     window.set_cursor_visible(false);
 
-    let mut render = pollster::block_on(Render::new(&window, config));
-    let mut game = GameState::new();
+    let mut render = pollster::block_on(Render::new(&window, config.clone()));
+    let mut game = GameState::new(config.board_size_cols);
     game.board.set_cell(4, 3, Cell::Filled);
     game.board.set_cell(7, 1, Cell::Filled);
     game.board.set_cell(0, 0, Cell::Filled);
-
 
     let sound_system = sound::SoundSystem::new();
     let sound_pack = sound::SoundPack::new();
@@ -44,7 +44,9 @@ pub async fn run() {
     let mut input = Input::new();
 
     // todo initialise all systems
-    // systems would handle inputs
+    let selection_system = PlacementSystem;
+
+
 
     window.set_visible(true);
     let mut last_time = instant::Instant::now();
@@ -68,7 +70,7 @@ pub async fn run() {
                 },
                 ..
             } => {
-                let input_handled = input.update(&key, &element_state);
+                let input_handled = input.update_kb(&key, &element_state);
                 if !input_handled {
                     ignore_input(&element_state, &key, control_flow);
                 }
@@ -79,13 +81,22 @@ pub async fn run() {
                     ..
                 }, ..
             } => {
+                input.update_mouse_position(position);
+
+                // todo move to input. no need to keep this info in mouse position
                 cursor_position = (position.x, position.y);
-                println!("mouse: ({:?}, {:?})", position.x as usize, position.y as usize);
                 game.mouse_position = (position.x as usize, position.y as usize);
+            }
+            Event::WindowEvent {
+                event: WindowEvent::MouseInput { button, state, .. },
+                ..
+            } => {
+                input.update_mouse(&button, &state);
             }
             Event::WindowEvent {
                 event: WindowEvent::RedrawRequested, ..
             } => {
+                let dt = last_time.elapsed();
                 last_time = instant::Instant::now();
                 window.request_redraw();
 
@@ -98,16 +109,21 @@ pub async fn run() {
                             sound_system.queue(sound_pack.bounce());
                         }
                         events::Event::BoardUpdated(_) => {
-                            //todo logic
+                            // todo logic
                         }
-                        events::Event::ShapeChoiceUpdate => {
+                        events::Event::ShapeSelected(n) => {
                             // todo logic
                         }
                         Resize(_, _) => {}
                     }
                 }
+
+                selection_system.update_state(&input, dt, &mut game, &mut game_event_queue, &config);
+
                 game_event_queue.clear();
+                // todo pass UI instead of game?
                 render.render_state(&game);
+                input.reset();
                 window.request_redraw();
             }
             Event::WindowEvent {
@@ -126,7 +142,7 @@ pub async fn run() {
                 ..
             } => {
                 render.resize(size);
-                game_event_queue.push(events::Event::Resize(size.width as f32, size.height as f32));
+                game_event_queue.push(Resize(size.width as f32, size.height as f32));
             }
 
             _ => {}

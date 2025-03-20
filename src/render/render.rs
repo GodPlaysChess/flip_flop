@@ -38,7 +38,7 @@ pub struct Render<'a> {
     // glyph_brush: wgpu_glyph::GlyphBrush<()>,
     // staging_belt: wgpu::util::StagingBelt,
 }
-
+#[derive(Clone)]
 pub struct UserRenderConfig {
     pub window_size: PhysicalSize<u32>,
     // game cell space settings
@@ -63,7 +63,7 @@ impl Default for UserRenderConfig {
             12,
             5,
             10,
-            40.0,
+            20.0,
             30.0,
             100.0,
             100.0,
@@ -256,7 +256,7 @@ impl<'a> Render<'a> {
 
         //todo add cursor shadow
         let board_indices = render_board(&state.board);
-        let panel_indices = render_panel(&state.shape_choice, self.user_render_config.panel_cols);
+        let panel_indices = render_panel(&state.panel, self.user_render_config.panel_cols);
 
         match self.surface.get_current_texture() {
             Ok(frame) => {

@@ -1,14 +1,12 @@
-use std::cmp::max;
-
+use std::collections::HashMap;
 use crate::events::XY;
-use crate::game_entities::{Board, Cell, Shape};
+use crate::game_entities::{Board, Cell, Panel, Shape};
 
 // the UI contains only visible elements. I.e only things are to be rendered.
 // i.e. if shape is hidden - it's not in the UI. Treat it like intermediate datastructure
 // between game state and vertex information that is passed in shader
 struct UI {
     board: Board,
-    panel: Panel,
     mouse: MousePosition,
     score: Score,
 }
@@ -17,34 +15,27 @@ struct Score {
     value: u16,
 }
 
-struct Panel {
-    shapes: Vec<Shape>,
-}
-
 struct MousePosition {
     xy: XY,
 }
 
 //shapes -> index_buffer
-pub fn render_panel(shapes: &Vec<Shape>, panel_width_cols: usize) -> Vec<u32> {
-
-    // convert shapes to cells
-    let grid = shapes_to_cell_space(shapes);
+pub fn render_panel(panel: &Panel, panel_width_cols: usize) -> Vec<u32> {
     // convert grid + dimensions to indices for triangles
-    return to_index_space(grid, panel_width_cols);
+    return to_index_space(&panel.shapes_in_cell_space, panel_width_cols);
     // same thing in the board -> extract to the common thing
 }
 
-pub fn to_index_space(cells: Vec<(usize, usize)>, max_col: usize) -> Vec<u32> {
+pub fn to_index_space(cells: &HashMap<(usize, usize), usize>, max_col: usize) -> Vec<u32> {
     let mut indices = Vec::new();
 
-    for (x, y) in cells {
+    for (x, y) in cells.keys() {
         indices.extend(cell_to_ix(x, y, max_col));
     }
     indices
 }
 
-fn cell_to_ix(col: usize, row: usize, max_col: usize) -> [u32; 6] {
+fn cell_to_ix(col: &usize, row: &usize, max_col: usize) -> [u32; 6] {
     let top_left = (row * (max_col + 1) + col) as u32;
     let top_right = top_left + 1;
     let bottom_left = top_left + (max_col as u32 + 1);
@@ -56,28 +47,10 @@ fn cell_to_ix(col: usize, row: usize, max_col: usize) -> [u32; 6] {
 }
 
 
-// in cell space, converts the list of shapes to list of coords in a format of
-// col -> row from top to bottom
-pub fn shapes_to_cell_space(shapes: &Vec<Shape>) -> Vec<(usize, usize)> {
-    let mut result: Vec<(usize, usize)> = Vec::new();
-    let mut offset_col = 0;
-    let mut max_dx = 0;
-    for (i, s) in shapes.iter().enumerate() {
-        for (dx, dy) in Shape::cells(&s.kind) {
-            result.push((dx + offset_col, dy));
-            max_dx = max(max_dx, dx)
-        }
-        offset_col = offset_col + 2 + max_dx;
-        max_dx = 0;
-    }
-
-    return result;
-}
 
 // board to index buffer
 pub fn render_board(board: &Board) -> Vec<u32> {
     let mut indices = Vec::new();
-    let board_size = board.grid.len();
 
     /*
              0   1   2   3
@@ -89,10 +62,10 @@ pub fn render_board(board: &Board) -> Vec<u32> {
              12  13  14  15
 
      */
-    for row in 0..board_size {
-        for col in 0..board_size {
-            if let Cell::Filled = board.grid[col][row] {
-                indices.extend(cell_to_ix(col, row, board_size));
+    for row in 0..board.size {
+        for col in 0..board.size {
+            if board.get(col, row).is_some_and(|x| x == &Cell::Filled) {
+                indices.extend(cell_to_ix(&col, &row, board.size));
             }
         }
     }
@@ -108,28 +81,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_shapes_as_grid() {
-        let shapes = vec![
-            Shape::new(ShapeType::I2, 0),
-            Shape::new(ShapeType::OO, 0),
-        ];
-
-        let result = shapes_to_cell_space(&shapes);
-
-        let expected = vec![
-            // First shape (I)
-            (0, 0), (1, 0), (2, 0), (3, 0),
-            // Second shape (O) should be placed with an offset
-            (5, 0), (5, 1), (6, 0), (6, 1),
-        ];
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
     fn test_single_cell() {
         let cells = vec![(0, 0)]; // Top-left corner
-        let indices = to_index_space(cells, 7);
+        let indices = to_index_space(&cells, 7);
 
         assert_eq!(indices, vec![
             0, 8, 9,  // First triangle
@@ -140,7 +94,7 @@ mod tests {
     #[test]
     fn test_two_adjacent_cells_horizontally() {
         let cells = vec![(0, 0), (1, 0)]; // Two side-by-side cells in row 0
-        let indices = to_index_space(cells, 7);
+        let indices = to_index_space(&cells, 7);
 
         assert_eq!(indices, vec![
             0, 8, 9, 0, 9, 1,  // First cell
@@ -151,7 +105,7 @@ mod tests {
     #[test]
     fn test_two_adjacent_cells_vertically() {
         let cells = vec![(0, 0), (0, 1)]; // Two stacked cells
-        let indices = to_index_space(cells, 7);
+        let indices = to_index_space(&cells, 7);
 
         assert_eq!(indices, vec![
             0, 8, 9, 0, 9, 1,  // First cell
@@ -162,7 +116,7 @@ mod tests {
     #[test]
     fn test_non_contiguous_cells_in_elonagated_grid() {
         let cells = vec![(0, 0), (2, 1), (5, 2)]; // Scattered cells
-        let indices = to_index_space(cells, 7);
+        let indices = to_index_space(&cells, 7);
 
         assert_eq!(indices, vec![
             0, 8, 9, 0, 9, 1,   // First cell (0,0)
