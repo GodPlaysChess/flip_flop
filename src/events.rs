@@ -1,4 +1,5 @@
-use crate::game_entities::Cell;
+use crate::game_entities::{Cell, ShapeType};
+use crate::space_converters::{CellCoord, OffsetXY};
 
 #[derive(Debug, Clone)]
 pub enum Event {
@@ -6,7 +7,10 @@ pub enum Event {
     ScoreUpdated(u32),
     BoardUpdated(Vec<BoardUpdate>),
     // shape select/deselect (disappearance from the shapes list)
-    ShapeSelected(usize),
+    ShapeSelected(usize, OffsetXY),
+
+    // based on this event we update board, update score and play sound, and may be even remove the whole row
+    SelectedShapePlaced(ShapeType, CellCoord),
     // -- foreground events
     // mouse moved with shape selected
     // board highlight
@@ -14,16 +18,11 @@ pub enum Event {
     // system events
     FocusChanged,
     ButtonPressed,
-    Resize(f32, f32)
+    Resize(f32, f32),
+    Nothing
 }
 
-// pixel coordinates
-#[derive(Debug, Default, Clone)]
-pub struct XY(pub usize, pub usize);
 
-// cell coordinate on the board, i.e. row, col pair.
-#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
-pub struct CellCoord(pub usize,pub usize);
 
 #[derive(Debug, Copy, Clone)]
 pub struct BoardUpdate {

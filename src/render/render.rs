@@ -11,7 +11,7 @@ use winit::window::Window;
 // use wgpu_glyph::{ab_glyph, Section, Text};
 use crate::game_entities::{Board, BOARD_SIZE, Cell, GameState, Shape};
 use crate::render::vertex::{CursorState, generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, Vertex};
-use crate::render::space_converters::{render_board, render_panel};
+use crate::space_converters::{render_board, render_panel};
 
 
 const FONT_BYTES: &[u8] = include_bytes!("../../res/DejaVuSans.ttf");

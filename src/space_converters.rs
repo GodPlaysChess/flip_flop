@@ -1,6 +1,5 @@
 use std::collections::HashMap;
-use crate::events::XY;
-use crate::game_entities::{Board, Cell, Panel, Shape};
+use crate::game_entities::{Board, Cell, Panel};
 
 // the UI contains only visible elements. I.e only things are to be rendered.
 // i.e. if shape is hidden - it's not in the UI. Treat it like intermediate datastructure
@@ -12,12 +11,48 @@ struct UI {
 }
 
 struct Score {
-    value: u16,
+    value: i16,
 }
 
 struct MousePosition {
     xy: XY,
 }
+
+// pixel coordinates.
+#[derive(Debug, Default, Clone)]
+pub struct XY(pub f32, pub f32);
+impl XY {
+    pub fn apply_offset(&self, offset: &OffsetXY) -> XY {
+        XY(
+            self.0 + (offset.0 as f32),
+            self.1 + (offset.1 as f32),
+        )
+    }
+}
+#[derive(Clone, Debug)]
+pub struct OffsetXY(pub i16, pub i16);
+
+
+// cell coordinate on the board, i.e. row, col pair.
+#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
+pub struct CellCoord {
+    pub col: i16,
+    pub row: i16,
+}
+
+impl CellCoord {
+    pub fn new(col: i16, row: i16) -> Self {
+        Self { col, row }
+    }
+}
+
+pub fn to_cell_space(top_left: XY, cell_size: f32, screen_height: u32, coord: XY) -> CellCoord {
+    let col = (coord.0 - top_left.0) / cell_size;
+    let row = (screen_height as f32 - top_left.1 - coord.1) / cell_size;
+
+    return CellCoord::new(col.floor() as i16, row.floor() as i16);
+}
+
 
 //shapes -> index_buffer
 pub fn render_panel(panel: &Panel, panel_width_cols: usize) -> Vec<u32> {
@@ -26,26 +61,30 @@ pub fn render_panel(panel: &Panel, panel_width_cols: usize) -> Vec<u32> {
     // same thing in the board -> extract to the common thing
 }
 
-pub fn to_index_space(cells: &HashMap<(usize, usize), usize>, max_col: usize) -> Vec<u32> {
+pub fn to_index_space(cells: &HashMap<CellCoord, usize>, max_col: usize) -> Vec<u32> {
     let mut indices = Vec::new();
 
-    for (x, y) in cells.keys() {
-        indices.extend(cell_to_ix(x, y, max_col));
+    for cell_coord in cells.keys() {
+        indices.extend(cell_to_ix(cell_coord, max_col));
     }
     indices
 }
 
-fn cell_to_ix(col: &usize, row: &usize, max_col: usize) -> [u32; 6] {
-    let top_left = (row * (max_col + 1) + col) as u32;
+fn cell_to_ix(coord: &CellCoord, max_col: usize) -> [u32; 6] {
+    assert!(coord.row >= 0 && coord.col >= 0, "cell coordinate is negative: {:?}", coord);
+    let row = coord.row as u32;
+    let col = coord.col as u32;
+    let stride = max_col as u32 + 1;
+
+    let top_left = row * stride + col;
     let top_right = top_left + 1;
-    let bottom_left = top_left + (max_col as u32 + 1);
+    let bottom_left = top_left + stride;
     let bottom_right = bottom_left + 1;
     return [
         top_left, bottom_left, bottom_right, // First triangle
         top_left, bottom_right, top_right,  // Second triangle
     ];
 }
-
 
 
 // board to index buffer
@@ -65,7 +104,7 @@ pub fn render_board(board: &Board) -> Vec<u32> {
     for row in 0..board.size {
         for col in 0..board.size {
             if board.get(col, row).is_some_and(|x| x == &Cell::Filled) {
-                indices.extend(cell_to_ix(&col, &row, board.size));
+                indices.extend(cell_to_ix(&CellCoord::new(col as i16, row as i16), board.size));
             }
         }
     }

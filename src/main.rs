@@ -1,13 +1,14 @@
+use std::collections::VecDeque;
 use winit::{event::*, event_loop::EventLoop, keyboard::{KeyCode, PhysicalKey}, window::WindowBuilder};
 use winit::event_loop::EventLoopWindowTarget;
 
 use render::render::Render;
 
-use crate::events::Event::{Resize, ScoreUpdated};
+use crate::events::Event::{Resize, ScoreUpdated, SelectedShapePlaced};
 use crate::game_entities::{Cell, GameState};
 use crate::input::Input;
 use crate::render::render::UserRenderConfig;
-use crate::system::{PlacementSystem, System};
+use crate::system::{SelectionValidationSystem, System};
 
 mod game_entities;
 mod events;
@@ -16,7 +17,7 @@ mod logic;
 mod system;
 mod input;
 mod sound;
-
+mod space_converters;
 
 pub async fn run() {
     let config = UserRenderConfig::default();
@@ -40,11 +41,11 @@ pub async fn run() {
 
     let sound_system = sound::SoundSystem::new();
     let sound_pack = sound::SoundPack::new();
-    let mut game_event_queue: Vec<events::Event> = Vec::new();
+    let mut game_event_queue: VecDeque<events::Event> = VecDeque::new();
     let mut input = Input::new();
 
     // todo initialise all systems
-    let selection_system = PlacementSystem;
+    let selection_system = SelectionValidationSystem;
 
 
 
@@ -111,10 +112,15 @@ pub async fn run() {
                         events::Event::BoardUpdated(_) => {
                             // todo logic
                         }
-                        events::Event::ShapeSelected(n) => {
+                        events::Event::ShapeSelected(n, coord) => {
                             // todo logic
                         }
                         Resize(_, _) => {}
+
+                        SelectedShapePlaced(_, _) => {
+
+                        }
+                        _ => {}
                     }
                 }
 
@@ -142,7 +148,7 @@ pub async fn run() {
                 ..
             } => {
                 render.resize(size);
-                game_event_queue.push(Resize(size.width as f32, size.height as f32));
+                game_event_queue.push_front(Resize(size.width as f32, size.height as f32));
             }
 
             _ => {}
