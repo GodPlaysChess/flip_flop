@@ -113,6 +113,7 @@ pub async fn run() {
                             // todo logic
                         }
                         events::Event::ShapeSelected(n, coord) => {
+                            println!("Shape {:?} is selected", &game.shape_choice.get(*n).unwrap())
                             // todo logic
                         }
                         Resize(_, _) => {}
