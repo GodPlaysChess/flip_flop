@@ -73,12 +73,7 @@ pub fn render_panel(panel: &Panel, panel_width_cols: usize) -> Vec<u32> {
 }
 
 pub fn to_index_space(cells: Vec<CellCoord>, max_col: usize) -> Vec<u32> {
-    let mut indices = Vec::new();
-
-    for cell_coord in cells {
-        indices.extend(cell_to_ix(&cell_coord, max_col));
-    }
-    indices
+    cells.iter().flat_map(|cell_coord| cell_to_ix(cell_coord, max_col)).collect()
 }
 
 fn cell_to_ix(coord: &CellCoord, max_col: usize) -> [u32; 6] {
