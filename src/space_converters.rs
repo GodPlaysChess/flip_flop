@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use minifb::Key::P;
 use crate::game_entities::{Board, Cell, Panel};
+use crate::game_entities::ShapeState::VISIBLE;
 
 // the UI contains only visible elements. I.e only things are to be rendered.
 // i.e. if shape is hidden - it's not in the UI. Treat it like intermediate datastructure
@@ -56,16 +58,25 @@ pub fn to_cell_space(top_left: XY, cell_size: f32, screen_height: u32, coord: XY
 
 //shapes -> index_buffer
 pub fn render_panel(panel: &Panel, panel_width_cols: usize) -> Vec<u32> {
+    let visible_cells: Vec<CellCoord> = panel.shapes_in_cell_space
+        .iter()
+        .filter_map(|(coord, &shape_index)| {
+            panel.shape_choice
+                .get(shape_index)
+                .filter(|shape| shape.state == VISIBLE)
+                .map(|_| coord.clone())
+        })
+        .collect();
+
     // convert grid + dimensions to indices for triangles
-    return to_index_space(&panel.shapes_in_cell_space, panel_width_cols);
-    // same thing in the board -> extract to the common thing
+    return to_index_space(visible_cells, panel_width_cols);
 }
 
-pub fn to_index_space(cells: &HashMap<CellCoord, usize>, max_col: usize) -> Vec<u32> {
+pub fn to_index_space(cells: Vec<CellCoord>, max_col: usize) -> Vec<u32> {
     let mut indices = Vec::new();
 
-    for cell_coord in cells.keys() {
-        indices.extend(cell_to_ix(cell_coord, max_col));
+    for cell_coord in cells {
+        indices.extend(cell_to_ix(&cell_coord, max_col));
     }
     indices
 }

@@ -361,7 +361,6 @@ fn render_cursor_shape(mouse_pos: &(usize, usize), selected_shape: &SelectedShap
     let mouse_x = mouse_pos.0 as f32;
     let mouse_y = mouse_pos.1 as f32;
     let zero = XY(mouse_x, mouse_y).apply_offset(&selected_shape.anchor_offset);
-    // println!("Anchor offset, and zero pos: {:?}, {:?}", &selected_shape.anchor_offset, zero);
     let cells = selected_shape.shape_type.cells();
 
     let mut vertex_result: Vec<Vertex> = vec![];

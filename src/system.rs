@@ -54,7 +54,7 @@ impl System for SelectionValidationSystem {
                         let over_shape = state.panel.shapes_in_cell_space.get(&CellCoord::new(col, row));
                         if let Some(&shape_ix) = over_shape {
                             // shape coordinate in cell space
-                            let available_shapes = &state.shape_choice;
+                            let available_shapes = &state.panel.shape_choice;
                             let shape = available_shapes.get(shape_ix).expect("Invalid shape index");
 
                             //todo it's not cell coordinate, it's cell offset in cell space.

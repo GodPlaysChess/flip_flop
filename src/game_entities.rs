@@ -151,7 +151,6 @@ impl Shape {
 // system state - is whatever we need from the user. Like mouse position/last click position etc.Mb RNG comes here.
 pub struct GameState {
     pub board: Board,
-    pub shape_choice: Vec<Shape>,
     pub selected_shape: Option<SelectedShape>,
     pub score: u32,
 
@@ -168,17 +167,34 @@ pub struct SelectedShape {
 }
 
 pub struct Panel {
+    pub shape_choice: Vec<Shape>,
     pub shapes_in_cell_space: HashMap<CellCoord, usize>,
 }
 
+impl Panel {
+    fn from_shapes(shape_choice: Vec<Shape>) -> Self {
+        let mut result: HashMap<CellCoord, usize> = HashMap::new();
+        let mut offset_col = 0;
+        let mut max_dx = 0;
+        for (i, s) in shape_choice.iter().enumerate() {
+            for (dx, dy) in s.kind.cells() {
+                result.insert(CellCoord::new((dx + offset_col) as i16, dy as i16), i);
+                max_dx = max(max_dx, dx)
+            }
+            offset_col = offset_col + 2 + max_dx;
+            max_dx = 0;
+        }
+
+        return Panel { shape_choice, shapes_in_cell_space: result };
+    }
+}
 
 impl GameState {
     pub fn new(board_size: usize) -> Self {
         let shapes = Shape::get_random_choice(3);
-        let panel = shapes_to_cell_space(&shapes);
+        let panel = Panel::from_shapes(shapes);
         Self {
             board: Board::new(board_size),
-            shape_choice: shapes,
             selected_shape: None,
             score: 0,
             mouse_position: (0, 0),
@@ -221,7 +237,7 @@ impl GameState {
 
     fn deplace(&mut self) {
         self.selected_shape = None;
-        for s in self.shape_choice.iter_mut() {
+        for s in self.panel.shape_choice.iter_mut() {
             if s.state == ShapeState::SELECTED {
                 s.set_state(ShapeState::PLACED)
             }
@@ -231,7 +247,7 @@ impl GameState {
     pub fn deselect(&mut self) {
         self.selected_shape = None;
 
-        for s in self.shape_choice.iter_mut() {
+        for s in self.panel.shape_choice.iter_mut() {
             if s.state == ShapeState::SELECTED {
                 s.set_state(VISIBLE)
             }
@@ -251,24 +267,6 @@ impl GameState {
     }
 }
 
-// in cell space, converts the list of shapes to list of coords in a format of
-// col -> row from top to bottom
-fn shapes_to_cell_space(shapes: &Vec<Shape>) -> Panel {
-    let mut result: HashMap<CellCoord, usize> = HashMap::new();
-    let mut offset_col = 0;
-    let mut max_dx = 0;
-    for (i, s) in shapes.iter().enumerate() {
-        for (dx, dy) in s.kind.cells() {
-            result.insert(CellCoord::new((dx + offset_col) as i16, dy as i16), i);
-            max_dx = max(max_dx, dx)
-        }
-        offset_col = offset_col + 2 + max_dx;
-        max_dx = 0;
-    }
-
-    return Panel { shapes_in_cell_space: result };
-}
-
 #[cfg(test)]
 mod tests {
     use crate::game_entities::ShapeType;
@@ -282,7 +280,7 @@ mod tests {
             Shape::new(ShapeType::OO, 0.0),
         ];
 
-        let result = shapes_to_cell_space(&shapes);
+        let result = Panel::from_shapes(shapes);
 
         let expected = vec![
             // First shape (I)
@@ -291,6 +289,6 @@ mod tests {
             (5, 0), (5, 1), (6, 0), (6, 1),
         ];
 
-        assert_eq!(result, expected);
+        assert_eq!(result.shapes_in_cell_space, expected);
     }
 }
