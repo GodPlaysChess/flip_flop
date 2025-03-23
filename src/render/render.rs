@@ -3,15 +3,15 @@ use std::collections::HashMap;
 use std::iter;
 use bytemuck::cast_slice;
 use cgmath::Vector2;
-use wgpu::{MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat, TextureUsages};
+use wgpu::{BufferAddress, MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat, TextureUsages};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
 // use wgpu_glyph::{ab_glyph, Section, Text};
-use crate::game_entities::{Board, Cell, GameState, Shape};
+use crate::game_entities::{Board, Cell, GameState, SelectedShape, Shape};
 use crate::render::vertex::{CursorState, generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, Vertex};
-use crate::space_converters::{render_board, render_panel};
+use crate::space_converters::{render_board, render_panel, XY};
 
 
 const FONT_BYTES: &[u8] = include_bytes!("../../res/DejaVuSans.ttf");
@@ -304,12 +304,25 @@ impl<'a> Render<'a> {
                 render_pass.set_index_buffer(self.panel_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..panel_indices.len() as u32, 0, 0..2);
 
-                // ✅ Cursor changes every frame, so we must update the buffer
-                render_pass.set_push_constants(wgpu::ShaderStages::FRAGMENT, 0, cast_slice(&[CursorState::Cursor as u32]));
+                // ✅ Cursor changes every frame, so we must update the buffer.
+                // first we draw cursor as shape
+                let mut cursor_offset_len: u32 = 0;
+                let mut cursor_offset_bytes: usize = 0;
+                if let Some(selected_shape) = &state.selected_shape {
+                    let cursor_shape_vertices = render_cursor_shape(&state.mouse_position, selected_shape, self.user_render_config.cell_size_px, &self.user_render_config.window_size);
+                    cursor_offset_len = cursor_shape_vertices.len() as u32;
+                    cursor_offset_bytes = cursor_shape_vertices.len() * size_of::<Vertex>();
+                    // println!("Cursor selected vertices are {:?}", cursor_shape_vertices);
+                    self.queue.write_buffer(&self.cursor_vertex_buffer, 0, cast_slice(&cursor_shape_vertices));
+                }
+                // then we draw the cursor
                 let new_cursor_vertices = render_cursor(&state.mouse_position, &self.user_render_config.cursor_size, &self.user_render_config.window_size);
-                self.queue.write_buffer(&self.cursor_vertex_buffer, 0, cast_slice(&new_cursor_vertices));
+                self.queue.write_buffer(&self.cursor_vertex_buffer, cursor_offset_bytes as BufferAddress, cast_slice(&new_cursor_vertices));
                 render_pass.set_vertex_buffer(0, self.cursor_vertex_buffer.slice(..));
-                render_pass.draw(0..6, 0..1); // No index buffer needed, just 4 vertices
+
+                render_pass.draw(0..cursor_offset_len, 0..1);
+                render_pass.set_push_constants(wgpu::ShaderStages::FRAGMENT, 0, cast_slice(&[CursorState::Cursor as u32]));
+                render_pass.draw(cursor_offset_len..(6 + cursor_offset_len), 0..1);
 
                 drop(render_pass);
 
@@ -344,11 +357,35 @@ fn render_cursor(mouse_pos: &(usize, usize), cursor_size: &f32, physical_size: &
     ]
 }
 
+fn render_cursor_shape(mouse_pos: &(usize, usize), selected_shape: &SelectedShape, cell_size_px: f32, physical_size: &PhysicalSize<u32>) -> Vec<Vertex> {
+    let mouse_x = mouse_pos.0 as f32;
+    let mouse_y = mouse_pos.1 as f32;
+    let zero = XY(mouse_x, mouse_y).apply_offset(&selected_shape.anchor_offset);
+    // println!("Anchor offset, and zero pos: {:?}, {:?}", &selected_shape.anchor_offset, zero);
+    let cells = selected_shape.shape_type.cells();
+
+    let mut vertex_result: Vec<Vertex> = vec![];
+    for cell in cells {
+        let cell_x_offset = cell.0 as f32 * cell_size_px;
+        let cell_y_offset = cell.1 as f32 * cell_size_px;
+        let top_left = Vertex::ndc_vertex(zero.0 + cell_x_offset, zero.1 + cell_y_offset, physical_size, true);
+        let bot_left = Vertex::ndc_vertex(zero.0 + cell_x_offset, zero.1 + cell_size_px + cell_y_offset, physical_size, true);
+        let bot_right = Vertex::ndc_vertex(zero.0 + cell_size_px + cell_x_offset, zero.1 + cell_size_px + cell_y_offset, physical_size, true);
+        let top_right = Vertex::ndc_vertex(zero.0 + cell_size_px + cell_x_offset, zero.1 + cell_y_offset, physical_size, true);
+        vertex_result.extend(&[
+            bot_left, bot_right, top_left,
+            top_left, bot_right, top_right
+        ])
+    }
+    vertex_result
+}
+
 fn create_cursor_buffer(device: &wgpu::Device) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("Cursor Vertex Buffer"),
         // 6 vertices because of quad. If switch to index rendering - could keep it as 4
-        size: (size_of::<Vertex>() * 6) as wgpu::BufferAddress,
+        //todo, currently we use the same buffer to render cursor shape. Could change it in the future.
+        size: (size_of::<Vertex>() * 6 * 5) as wgpu::BufferAddress,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, // COPY_DST so we can update it
         mapped_at_creation: false,
     })

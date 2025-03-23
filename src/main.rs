@@ -5,7 +5,7 @@ use winit::event_loop::EventLoopWindowTarget;
 use render::render::Render;
 
 use crate::events::Event::{ScoreUpdated, SelectedShapePlaced};
-use crate::game_entities::{Cell, GameState};
+use crate::game_entities::{Cell, GameState, SelectedShape};
 use crate::input::Input;
 use crate::render::render::UserRenderConfig;
 use crate::system::{PlacementSystem, SelectionValidationSystem, System, ScoreCleanupSystem};
@@ -112,6 +112,7 @@ pub async fn run() {
 
                         events::Event::ShapeSelected(n, coord) => {
                             let selected_shape = game.shape_choice.get(n).clone().unwrap();
+                            game.selected_shape = Some(SelectedShape { shape_type: selected_shape.kind, anchor_offset: coord });
                             println!("Shape {:?} is selected", &selected_shape);
                             //1. change state to selected
                             //2. need to show cursor as this shape

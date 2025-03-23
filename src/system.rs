@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 use std::time::Duration;
+use rodio::cpal::Sample;
 use crate::events::{Event};
 use crate::events::Event::{SelectedShapePlaced, ShapeSelected};
 use crate::input;
@@ -38,6 +39,7 @@ impl System for SelectionValidationSystem {
             match &state.selected_shape {
                 None => {
                     // nothing is selected, so we select shape from panel
+                    // coordinates of the mouse in the panel basis. Top-left is (0, 0).
                     let px = x - render_config.panel_offset_x_px;
                     let py = y - render_config.panel_offset_y_px;
                     println!("Clicking over normalized to panel offset {:?}, {:?} on panel", px, py);
@@ -48,16 +50,21 @@ impl System for SelectionValidationSystem {
                         let col = (px / render_config.cell_size_px) as i16;
                         let row = (py / render_config.cell_size_px) as i16;
                         println!("Clicking over {:?}, {:?} on panel", col, row);
+                        // println!("Shapes on the panel space {:?}" , state.panel.shapes_in_cell_space.iter().);
                         let over_shape = state.panel.shapes_in_cell_space.get(&CellCoord::new(col, row));
                         if let Some(&shape_ix) = over_shape {
                             // shape coordinate in cell space
-                            let x = &state.shape_choice;
+                            let available_shapes = &state.shape_choice;
+                            let shape = available_shapes.get(shape_ix).expect("Invalid shape index");
+
                             //todo it's not cell coordinate, it's cell offset in cell space.
-                            let shape = x.get(shape_ix).expect("Invalid shape index");
                             if shape.state == ShapeState::VISIBLE {
-                                let shape_pos_0 = shape.x_cell_coordinate * render_config.cell_size_px + render_config.panel_offset_x_px;
-                                let offset_x: i16 = (px - shape_pos_0).floor() as i16;
-                                let offset_y: i16 = -py as i16;
+                                // x coordinate in the panel basis
+                                let shape_pos_0 = (shape.col_offset_in_panel_basis as f32) * render_config.cell_size_px;
+                                let offset_x: i16 = (shape_pos_0 - px).floor() as i16;
+                                let offset_y: i16 = - py as i16;
+                                println!("Anchor offset ({:?}, {:?}). Shape zero x: {:?}", offset_x, offset_y, shape_pos_0);
+
                                 events.push_front(ShapeSelected(shape_ix, OffsetXY(offset_x, offset_y)))
                             }
                         }

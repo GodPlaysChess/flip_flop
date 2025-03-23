@@ -86,7 +86,7 @@ impl ShapeType {
             ShapeType::L3 => vec![(0, 0), (1, 0), (1, 1), (1, 2)],
             ShapeType::L4 => vec![(0, 0), (0, 1), (1, 0), (2, 0)],
 
-            ShapeType::I1 => vec![(0, 1), (0, 2), (0, 3), (0, 4)],
+            ShapeType::I1 => vec![(0, 0), (0, 1), (0, 2), (0, 3)],
             ShapeType::I2 => vec![(0, 0), (1, 0), (2, 0), (3, 0)],
 
             ShapeType::O => vec![(0, 0)],
@@ -100,7 +100,7 @@ impl ShapeType {
 pub struct Shape {
     pub kind: ShapeType,
     pub state: ShapeState,
-    pub x_cell_coordinate: f32, //todo extract relative position is useful for rendering
+    pub col_offset_in_panel_basis: i16, //todo extract relative position is useful for rendering
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -110,17 +110,16 @@ pub enum ShapeState {
     PLACED,
 }
 
-pub const SHAPE_TYPE_SIZE: usize = 12;
 impl Shape {
     pub fn set_state(&mut self, state: ShapeState) {
         self.state = state;
     }
 
-    pub fn new(kind: ShapeType, x: f32) -> Shape {
+    pub fn new(kind: ShapeType, col_offset_in_panel_basis: i16) -> Shape {
         Shape {
             kind,
             state: VISIBLE,
-            x_cell_coordinate: x,
+            col_offset_in_panel_basis,
         }
     }
 
@@ -134,12 +133,13 @@ impl Shape {
             .collect();
 
         // Compute positions using a fold
-        let mut current_position = 0.0;
+        let mut current_col_offset = 0;
         random_shapes
             .into_iter()
             .map(|shape| {
-                let position = current_position;
-                current_position += shape.horizontal_cell_size() as f32 + 1.0; // Update for the next shape
+                let position = current_col_offset;
+                current_col_offset += shape.horizontal_cell_size() + 1; // Update for the next shape
+                println!("generating start cell x {:?} for shape type  {:?}", position, shape);
                 return Shape::new(*shape, position);
             })
             .collect()
@@ -163,7 +163,7 @@ pub struct GameState {
 
 pub struct SelectedShape {
     pub shape_type: ShapeType,
-    //distance from top-left of the shape to the selection point.
+    //distance from selection point to top-left of the shape. So it must be always negative
     pub anchor_offset: OffsetXY,
 }
 
@@ -178,7 +178,7 @@ impl GameState {
         let panel = shapes_to_cell_space(&shapes);
         Self {
             board: Board::new(board_size),
-            shape_choice: Shape::get_random_choice(3),
+            shape_choice: shapes,
             selected_shape: None,
             score: 0,
             mouse_position: (0, 0),
