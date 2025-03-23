@@ -187,12 +187,16 @@ impl Panel {
 
         return Panel { shape_choice, shapes_in_cell_space: result };
     }
+
+    pub fn generate_for_3() -> Self {
+        let shapes = Shape::get_random_choice(3);
+        Self::from_shapes(shapes)
+    }
 }
 
 impl GameState {
     pub fn new(board_size: usize) -> Self {
-        let shapes = Shape::get_random_choice(3);
-        let panel = Panel::from_shapes(shapes);
+        let panel = Panel::generate_for_3();
         Self {
             board: Board::new(board_size),
             selected_shape: None,
@@ -204,8 +208,8 @@ impl GameState {
     }
 
     pub fn is_valid_placement(&self, shape: &ShapeType, cell_coord: &CellCoord) -> bool {
-        if cell_coord.row < 0 || cell_coord.row >= self.board.size.to_i16().unwrap() &&
-            cell_coord.col < 0 || cell_coord.col >= self.board.size.to_i16().unwrap() {
+        if cell_coord.row < 0 || cell_coord.row >= self.board.size as i16 ||
+            cell_coord.col < 0 || cell_coord.col >= self.board.size as i16 {
             return false;
         }
         let col = cell_coord.col.to_usize().unwrap();

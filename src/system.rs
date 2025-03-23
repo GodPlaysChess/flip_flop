@@ -4,7 +4,7 @@ use rodio::cpal::Sample;
 use crate::events::{Event};
 use crate::events::Event::{SelectedShapePlaced, ShapeSelected};
 use crate::input;
-use crate::game_entities::{Cell, GameState, ShapeState, ShapeType};
+use crate::game_entities::{Cell, GameState, Panel, ShapeState, ShapeType};
 use crate::input::Input;
 use crate::render::render::UserRenderConfig;
 use crate::space_converters::{CellCoord, OffsetXY, to_cell_space, within_bounds, XY};
@@ -62,7 +62,7 @@ impl System for SelectionValidationSystem {
                                 // x coordinate in the panel basis
                                 let shape_pos_0 = (shape.col_offset_in_panel_basis as f32) * render_config.cell_size_px;
                                 let offset_x: i16 = (shape_pos_0 - px).floor() as i16;
-                                let offset_y: i16 = - py as i16;
+                                let offset_y: i16 = -py as i16;
                                 println!("Anchor offset ({:?}, {:?}). Shape zero x: {:?}", offset_x, offset_y, shape_pos_0);
 
                                 events.push_front(ShapeSelected(shape_ix, OffsetXY(offset_x, offset_y)))
@@ -97,7 +97,10 @@ impl System for PlacementSystem {
             println!("Placing shape {:?} to {:?}", shape, cell);
             // update board
             state.place_shape(shape, cell);
-            // erase
+
+            if (state.panel.shape_choice.iter().all(|s| s.state != ShapeState::VISIBLE)) {
+                state.panel = Panel::generate_for_3();
+            }
         }
     }
 }

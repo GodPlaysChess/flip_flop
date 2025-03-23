@@ -13,9 +13,12 @@
 
 ===================== WGPU
 + refactor to Game / UI / Rendering
-- click on the shape to select
-- cursor becomes the shape
-- shape over the board checks if we can place it
-- clicking places the shape
++ click on the shape to select
++ cursor becomes the shape
++ clicking places the shape
 
+- draw the score
+- update panel when shapes are over
+
+- shape over the board checks if we can place it
 - currently code is disorganised
