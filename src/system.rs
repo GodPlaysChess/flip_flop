@@ -78,7 +78,7 @@ impl System for SelectionValidationSystem {
                                                          render_config.cell_size_px,
                                                          &placement_xy_0);
 
-                    println!("Trying to place int h e cell {:?}. PlacementXY: {:?}", &placement_0_cell, &placement_xy_0);
+                    println!("Trying to place in the cell {:?}", &placement_0_cell);
 
                     // we can always compute if placement is value to show the shadow
                     if state.is_valid_placement(&selected_shape.shape_type, &placement_0_cell) {
