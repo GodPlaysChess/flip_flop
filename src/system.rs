@@ -72,11 +72,13 @@ impl System for SelectionValidationSystem {
                 }
                 // something was selected, and we try to place shape on the board
                 Some(selected_shape) => {
+                    //todo CHECK THERE!
                     let placement_xy_0 = XY(x, y).apply_offset(&selected_shape.anchor_offset);
                     let placement_0_cell = to_cell_space(XY(render_config.board_offset_x_px, render_config.board_offset_y_px),
                                                          render_config.cell_size_px,
-                                                         render_config.window_size.height,
-                                                         placement_xy_0);
+                                                         &placement_xy_0);
+
+                    println!("Trying to place int h e cell {:?}. PlacementXY: {:?}", &placement_0_cell, &placement_xy_0);
 
                     // we can always compute if placement is value to show the shadow
                     if state.is_valid_placement(&selected_shape.shape_type, &placement_0_cell) {
@@ -92,6 +94,7 @@ pub struct PlacementSystem;
 impl System for PlacementSystem {
     fn update_state(&self, input: &Input, dt: Duration, state: &mut GameState, events: &mut VecDeque<Event>, render_config: &UserRenderConfig, event: Option<&Event>) {
         if let Some(SelectedShapePlaced(shape, cell)) = event {
+            println!("Placing shape {:?} to {:?}", shape, cell);
             // update board
             state.place_shape(shape, cell);
             // erase

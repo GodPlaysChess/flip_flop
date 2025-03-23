@@ -232,10 +232,6 @@ impl GameState {
             &mut self.board.set_cell(col, row, Cell::Filled);
         }
 
-        self.deplace()
-    }
-
-    fn deplace(&mut self) {
         self.selected_shape = None;
         for s in self.panel.shape_choice.iter_mut() {
             if s.state == ShapeState::SELECTED {

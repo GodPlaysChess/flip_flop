@@ -48,9 +48,9 @@ impl CellCoord {
     }
 }
 
-pub fn to_cell_space(top_left: XY, cell_size: f32, screen_height: u32, coord: XY) -> CellCoord {
+pub fn to_cell_space(top_left: XY, cell_size: f32, coord: &XY) -> CellCoord {
     let col = (coord.0 - top_left.0) / cell_size;
-    let row = (screen_height as f32 - top_left.1 - coord.1) / cell_size;
+    let row = (coord.1 - top_left.1) / cell_size;
 
     return CellCoord::new(col.floor() as i16, row.floor() as i16);
 }
