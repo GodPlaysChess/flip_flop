@@ -3,10 +3,10 @@ use std::time::Duration;
 use crate::events::{Event};
 use crate::events::Event::{SelectedShapePlaced, ShapeSelected};
 use crate::input;
-use crate::game_entities::{GameState, ShapeType};
+use crate::game_entities::{Cell, GameState, ShapeState, ShapeType};
 use crate::input::Input;
 use crate::render::render::UserRenderConfig;
-use crate::space_converters::{CellCoord, OffsetXY, to_cell_space, XY};
+use crate::space_converters::{CellCoord, OffsetXY, to_cell_space, within_bounds, XY};
 
 // to think about:
 // I have 3 spaces, which I need to convert from and to:
@@ -24,12 +24,13 @@ pub trait System {
         state: &mut GameState,
         events: &mut VecDeque<Event>, // events so systems can communicate with each other
         render_config: &UserRenderConfig,
+        event: Option<&Event>,
     );
 }
 
 pub struct SelectionValidationSystem;
 impl System for SelectionValidationSystem {
-    fn update_state(&self, input: &Input, dt: Duration, state: &mut GameState, events: &mut VecDeque<Event>, render_config: &UserRenderConfig) {
+    fn update_state(&self, input: &Input, dt: Duration, state: &mut GameState, events: &mut VecDeque<Event>, render_config: &UserRenderConfig, oe: Option<&Event>) {
         if input.mouse_right_clicked {
             state.deselect();
         }
@@ -37,21 +38,28 @@ impl System for SelectionValidationSystem {
             match &state.selected_shape {
                 None => {
                     // nothing is selected, so we select shape from panel
-                    let px = (x as f32) - render_config.panel_offset_x_px;
-                    let py = (render_config.window_size.height as f32) - render_config.panel_offset_y_px - (y as f32);
-                    if px < 0.0 || px > render_config.cell_size_px * (render_config.panel_cols as f32)
-                        || py < 0.0 || py > render_config.cell_size_px * (render_config.panel_rows as f32) {
+                    let px = x - render_config.panel_offset_x_px;
+                    let py = y - render_config.panel_offset_y_px;
+                    println!("Clicking over normalized to panel offset {:?}, {:?} on panel", px, py);
+
+                    if within_bounds(px, py,
+                                     render_config.cell_size_px * (render_config.panel_cols as f32),
+                                     render_config.cell_size_px * (render_config.panel_rows as f32)) {
                         let col = (px / render_config.cell_size_px) as i16;
                         let row = (py / render_config.cell_size_px) as i16;
+                        println!("Clicking over {:?}, {:?} on panel", col, row);
                         let over_shape = state.panel.shapes_in_cell_space.get(&CellCoord::new(col, row));
-                        if let Some(&shape) = over_shape {
+                        if let Some(&shape_ix) = over_shape {
                             // shape coordinate in cell space
                             let x = &state.shape_choice;
                             //todo it's not cell coordinate, it's cell offset in cell space.
-                            let shape_pos_0 = x.get(shape).expect("Invalid shape index").x_cell_coordinate;
-                            let offset_x: i16 = (px - shape_pos_0).floor() as i16;
-                            let offset_y: i16 = -py as i16;
-                            events.push_front(ShapeSelected(shape, OffsetXY(offset_x, offset_y)))
+                            let shape = x.get(shape_ix).expect("Invalid shape index");
+                            if shape.state == ShapeState::VISIBLE {
+                                let shape_pos_0 = shape.x_cell_coordinate * render_config.cell_size_px + render_config.panel_offset_x_px;
+                                let offset_x: i16 = (px - shape_pos_0).floor() as i16;
+                                let offset_y: i16 = -py as i16;
+                                events.push_front(ShapeSelected(shape_ix, OffsetXY(offset_x, offset_y)))
+                            }
                         }
                     }
                 }
@@ -59,9 +67,9 @@ impl System for SelectionValidationSystem {
                 Some(selected_shape) => {
                     let placement_xy_0 = XY(x, y).apply_offset(&selected_shape.anchor_offset);
                     let placement_0_cell = to_cell_space(XY(render_config.board_offset_x_px, render_config.board_offset_y_px),
-                                  render_config.cell_size_px,
-                                  render_config.window_size.height,
-                                  placement_xy_0);
+                                                         render_config.cell_size_px,
+                                                         render_config.window_size.height,
+                                                         placement_xy_0);
 
                     // we can always compute if placement is value to show the shadow
                     if state.is_valid_placement(&selected_shape.shape_type, &placement_0_cell) {
@@ -73,12 +81,63 @@ impl System for SelectionValidationSystem {
     }
 }
 
-// pub struct ValidationSystem;
-// impl System for ValidationSystem {
-//     fn update_state(&self, input: &Input, dt: Duration, state: &mut GameState, events: &mut Vec<Event>) {
-//         todo!()
-//     }
-// }
+pub struct PlacementSystem;
+impl System for PlacementSystem {
+    fn update_state(&self, input: &Input, dt: Duration, state: &mut GameState, events: &mut VecDeque<Event>, render_config: &UserRenderConfig, event: Option<&Event>) {
+        if let Some(SelectedShapePlaced(shape, cell)) = event {
+            // update board
+            state.place_shape(shape, cell);
+            // erase
+        }
+    }
+}
+
+// checks the board state after end of turn, that
+// 1. if there's some row or column that is filled (or some other  shape)
+// 2. cleans the board
+// 3. increment score
+pub struct ScoreCleanupSystem;
+impl System for ScoreCleanupSystem {
+    fn update_state(&self, input: &Input, dt: Duration, game: &mut GameState, events: &mut VecDeque<Event>, render_config: &UserRenderConfig, event: Option<&Event>) {
+        let size = game.board.size;
+
+        let mut row_counts = vec![0; size];
+        let mut col_counts = vec![0; size];
+
+        let mut total_cells = 0;
+        let mut full_cols = 0;
+        let mut full_rows = 0;
+
+        for row in 0..size {
+            for col in 0..size {
+                if game.board.get(col, row).is_some_and(|x| x == &Cell::Filled) {
+                    row_counts[row] += 1;
+                    col_counts[col] += 1;
+                }
+            }
+        }
+
+        for row in 0..size {
+            if row_counts[row] == size {
+                full_rows += 1;
+                total_cells += size;
+
+                game.clean_row(row);
+            }
+        }
+        for col in 0..size {
+            if col_counts[col] == size {
+                full_cols += 1;
+                total_cells += size;
+
+                game.clean_col(col);
+            }
+        }
+
+        //todo we can extract the score math in the different system, so we could extend the way score is computed
+        game.score = game.score + (total_cells + full_cols * size + full_rows * size) as u32
+    }
+}
 //
 //
 // pub struct ShapeGenerationSystem;

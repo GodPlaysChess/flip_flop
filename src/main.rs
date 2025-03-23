@@ -4,11 +4,11 @@ use winit::event_loop::EventLoopWindowTarget;
 
 use render::render::Render;
 
-use crate::events::Event::{Resize, ScoreUpdated, SelectedShapePlaced};
+use crate::events::Event::{ScoreUpdated, SelectedShapePlaced};
 use crate::game_entities::{Cell, GameState};
 use crate::input::Input;
 use crate::render::render::UserRenderConfig;
-use crate::system::{SelectionValidationSystem, System};
+use crate::system::{PlacementSystem, SelectionValidationSystem, System, ScoreCleanupSystem};
 
 mod game_entities;
 mod events;
@@ -46,7 +46,8 @@ pub async fn run() {
 
     // todo initialise all systems
     let selection_system = SelectionValidationSystem;
-
+    let placement_system = PlacementSystem;
+    let score_cleanup_system = ScoreCleanupSystem;
 
 
     window.set_visible(true);
@@ -101,33 +102,31 @@ pub async fn run() {
                 last_time = instant::Instant::now();
                 window.request_redraw();
 
-                for event in &game_event_queue {
+                selection_system.update_state(&input, dt, &mut game, &mut game_event_queue, &config, None);
+
+                while let Some(event) = game_event_queue.pop_front() {
                     match event {
-                        events::Event::FocusChanged | events::Event::ButtonPressed => {
-                            sound_system.queue(sound_pack.bounce());
-                        }
                         ScoreUpdated(u32) => {
                             sound_system.queue(sound_pack.bounce());
                         }
-                        events::Event::BoardUpdated(_) => {
-                            // todo logic
-                        }
+
                         events::Event::ShapeSelected(n, coord) => {
-                            println!("Shape {:?} is selected", &game.shape_choice.get(*n).unwrap())
-                            // todo logic
-                        }
-                        Resize(_, _) => {}
+                            let selected_shape = game.shape_choice.get(n).clone().unwrap();
+                            println!("Shape {:?} is selected", &selected_shape);
+                            //1. change state to selected
+                            //2. need to show cursor as this shape
 
+                            // game.selected_shape =  Some(*selected_shape.clone());
+                        }
                         SelectedShapePlaced(_, _) => {
-
+                            placement_system.update_state(&input, dt, &mut game, &mut game_event_queue, &config, Some(&event));
+                            score_cleanup_system.update_state(&input, dt, &mut game, &mut game_event_queue, &config, None)
                         }
-                        _ => {}
                     }
                 }
 
-                selection_system.update_state(&input, dt, &mut game, &mut game_event_queue, &config);
+                score_cleanup_system.update_state(&input, dt, &mut game, &mut game_event_queue, &config, None);
 
-                game_event_queue.clear();
                 // todo pass UI instead of game?
                 render.render_state(&game);
                 input.reset();
@@ -149,7 +148,6 @@ pub async fn run() {
                 ..
             } => {
                 render.resize(size);
-                game_event_queue.push_front(Resize(size.width as f32, size.height as f32));
             }
 
             _ => {}

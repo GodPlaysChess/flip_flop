@@ -9,7 +9,7 @@ use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
 // use wgpu_glyph::{ab_glyph, Section, Text};
-use crate::game_entities::{Board, BOARD_SIZE, Cell, GameState, Shape};
+use crate::game_entities::{Board, Cell, GameState, Shape};
 use crate::render::vertex::{CursorState, generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, Vertex};
 use crate::space_converters::{render_board, render_panel};
 
@@ -63,8 +63,9 @@ impl Default for UserRenderConfig {
             12,
             5,
             10,
-            20.0,
+            10.0,
             30.0,
+            100.0,
             100.0,
             100.0,
             100.0,
@@ -82,9 +83,10 @@ impl UserRenderConfig {
         board_offset_x_px: f32,
         board_offset_y_px: f32,
         panel_offset_x_px: f32,
+        board_panel_y_px: f32,
     ) -> Self {
         let window_size = PhysicalSize::new(SCREEN_WIDTH, SCREEN_HEIGHT);
-        let panel_offset_y_px = board_offset_y_px + cell_size_px * panel_cols as f32;
+        let panel_offset_y_px = board_offset_y_px + board_panel_y_px + cell_size_px * board_size as f32;
 
         Self {
             window_size,

@@ -5,7 +5,6 @@ use crate::space_converters::{CellCoord, OffsetXY};
 pub enum Event {
     //-- background events
     ScoreUpdated(u32),
-    BoardUpdated(Vec<BoardUpdate>),
     // shape select/deselect (disappearance from the shapes list)
     ShapeSelected(usize, OffsetXY),
 
@@ -14,12 +13,6 @@ pub enum Event {
     // -- foreground events
     // mouse moved with shape selected
     // board highlight
-
-    // system events
-    FocusChanged,
-    ButtonPressed,
-    Resize(f32, f32),
-    Nothing
 }
 
 

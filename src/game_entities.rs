@@ -1,17 +1,11 @@
 use std::cmp::max;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap};
 use cgmath::num_traits::ToPrimitive;
 use rand::prelude::SliceRandom;
-use rand::Rng;
-use crate::events::{BoardUpdate, Event};
-use crate::events::Event::BoardUpdated;
 use crate::game_entities::ShapeState::VISIBLE;
 use crate::space_converters::{CellCoord, OffsetXY};
-use strum::{EnumCount, IntoEnumIterator};
+use strum::IntoEnumIterator;
 use strum_macros::{EnumCount, EnumIter};
-
-pub const BOARD_SIZE: usize = 10; //
-pub const CELL_SIZE: usize = 40; // Size of each cell in pixels
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Cell {
@@ -193,53 +187,33 @@ impl GameState {
         }
     }
 
-
-    // pub fn is_valid_placement_of_selected_shape(&self) -> bool {
-    //     if let Some(kind) = &self.selected_shape {
-    //         let (x, y) = &self.mouse_position;
-    //         let n = x / CELL_SIZE;
-    //         let m = y / CELL_SIZE;
-    //         return self.is_valid_placement(&kind.shape_type, n, m);
-    //     }
-    //     return false;
-    // }
-
-    pub fn is_valid_placement(&self, shape: &ShapeType, base: &CellCoord) -> bool {
-        let col = base.col as u16 as usize;
-        let row = base.row as u16 as usize;
-        if col < 0 || row < 0 {
+    pub fn is_valid_placement(&self, shape: &ShapeType, cell_coord: &CellCoord) -> bool {
+        if cell_coord.row < 0 || cell_coord.row >= self.board.size.to_i16().unwrap() &&
+            cell_coord.col < 0 || cell_coord.col >= self.board.size.to_i16().unwrap() {
             return false;
         }
+        let col = cell_coord.col.to_usize().unwrap();
+        let row = cell_coord.row.to_usize().unwrap();
+
         for (dx, dy) in shape.cells() {
             let nx = col.wrapping_add(dx);
             let ny = row.wrapping_add(dy);
-            if nx >= BOARD_SIZE || ny >= BOARD_SIZE || self.board.get(nx, ny).is_none_or(|x| x == &Cell::Filled) {
+            if self.board.get(nx, ny).is_none_or(|x| x == &Cell::Filled) {
                 return false;
             }
         }
         true
     }
 
-    pub fn place_shape(&mut self, shape_type: &ShapeType, cell_coord: &CellCoord, events: &mut VecDeque<Event>) {
+    pub fn place_shape(&mut self, shape_type: &ShapeType, cell_coord: &CellCoord) {
         assert!(cell_coord.row >= 0 && cell_coord.row < self.board.size.to_i16().unwrap() &&
                     cell_coord.col >= 0 && cell_coord.col < self.board.size.to_i16().unwrap(),
                 "error placing cell out of the board {:?}", cell_coord);
-        let mut updates: Vec<BoardUpdate> = vec![];
         for (dx, dy) in shape_type.cells() {
             let col = cell_coord.col as usize + dx;
             let row = cell_coord.row as usize + dy;
-            if self.board.get(col, row).is_some_and(|x| x == &Cell::Empty)
-            {
-                updates.push(BoardUpdate {
-                    cell: Cell::Filled,
-                    coord: CellCoord::new(col.to_i16().unwrap(), row.to_i16().unwrap()),
-                }
-                )
-            }
-        }
 
-        if !updates.is_empty() {
-            events.push_front(BoardUpdated(updates))
+            &mut self.board.set_cell(col, row, Cell::Filled);
         }
 
         self.deplace()
@@ -261,6 +235,18 @@ impl GameState {
             if s.state == ShapeState::SELECTED {
                 s.set_state(VISIBLE)
             }
+        }
+    }
+
+    pub fn clean_row(&mut self, row: usize) {
+        for col in 0..self.board.size {
+            self.board.set_cell(col, row, Cell::Empty)
+        }
+    }
+
+    pub fn clean_col(&mut self, col: usize) {
+        for row in 0..self.board.size {
+            self.board.set_cell(col, row, Cell::Empty)
         }
     }
 }

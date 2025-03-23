@@ -112,6 +112,10 @@ pub fn render_board(board: &Board) -> Vec<u32> {
     indices
 }
 
+pub fn within_bounds(px: f32, py: f32, x_max: f32, y_max: f32) -> bool {
+    px >= 0.0 && px < x_max && py >= 0.0 && py < y_max
+}
+
 
 #[cfg(test)]
 mod tests {
