@@ -2,15 +2,20 @@ use std::iter;
 use std::rc::Rc;
 
 use bytemuck::cast_slice;
-use glyphon::{    Resolution};
-use wgpu::{BufferAddress, MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat, TextureUsages};
+use glyphon::Resolution;
 use wgpu::util::DeviceExt;
+use wgpu::{
+    BufferAddress, MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat,
+    TextureUsages,
+};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
 use crate::game_entities::{GameState, SelectedShape};
-use crate::render::text_system::{TextSystem};
-use crate::render::vertex::{CursorState, generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, Vertex};
+use crate::render::text_system::TextSystem;
+use crate::render::vertex::{
+    generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, CursorState, Vertex,
+};
 use crate::space_converters::{render_board, render_panel, XY};
 
 const FONT_BYTES: &[u8] = include_bytes!("../../res/DejaVuSans.ttf");
@@ -34,7 +39,6 @@ pub struct Render<'a> {
 
     user_render_config: UserRenderConfig,
     text_system: TextSystem,
-
     // glyph_brush: wgpu_glyph::GlyphBrush<()>,
     // staging_belt: wgpu::util::StagingBelt,
 }
@@ -59,17 +63,7 @@ const SCREEN_HEIGHT: u32 = 800;
 
 impl Default for UserRenderConfig {
     fn default() -> Self {
-        Self::new(
-            12,
-            5,
-            10,
-            10.0,
-            30.0,
-            100.0,
-            100.0,
-            100.0,
-            100.0,
-        )
+        Self::new(12, 5, 10, 10.0, 30.0, 100.0, 100.0, 100.0, 100.0)
     }
 }
 
@@ -86,7 +80,8 @@ impl UserRenderConfig {
         board_panel_y_px: f32,
     ) -> Self {
         let window_size = PhysicalSize::new(SCREEN_WIDTH, SCREEN_HEIGHT);
-        let panel_offset_y_px = board_offset_y_px + board_panel_y_px + cell_size_px * board_size as f32;
+        let panel_offset_y_px =
+            board_offset_y_px + board_panel_y_px + cell_size_px * board_size as f32;
 
         Self {
             window_size,
@@ -102,7 +97,6 @@ impl UserRenderConfig {
         }
     }
 }
-
 
 impl<'a> Render<'a> {
     // Creating some of the wgpu types requires async code
@@ -120,40 +114,44 @@ impl<'a> Render<'a> {
         });
         let surface = instance.create_surface(window).unwrap();
 
-        let adapter = instance.request_adapter(
-            &wgpu::RequestAdapterOptions {
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
-            },
-        ).await.unwrap();
+            })
+            .await
+            .unwrap();
 
-
-        let (device, queue) = adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::PUSH_CONSTANTS,
-                // WebGL doesn't support all of wgpu's features, so if
-                // we're building for the web, we'll have to disable some.
-                required_limits: if cfg!(target_arch = "wasm32") {
-                    wgpu::Limits {
-                        max_push_constant_size: 128,
-                        ..wgpu::Limits::downlevel_webgl2_defaults()
-                    }
-                } else {
-                    wgpu::Limits {
-                        max_push_constant_size: 128,
-                        ..Default::default()
-                    }
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    required_features: wgpu::Features::PUSH_CONSTANTS,
+                    // WebGL doesn't support all of wgpu's features, so if
+                    // we're building for the web, we'll have to disable some.
+                    required_limits: if cfg!(target_arch = "wasm32") {
+                        wgpu::Limits {
+                            max_push_constant_size: 128,
+                            ..wgpu::Limits::downlevel_webgl2_defaults()
+                        }
+                    } else {
+                        wgpu::Limits {
+                            max_push_constant_size: 128,
+                            ..Default::default()
+                        }
+                    },
+                    label: None,
+                    memory_hints: MemoryHints::Performance,
                 },
-                label: None,
-                memory_hints: MemoryHints::Performance,
-            },
-            None,
-        ).await.unwrap();
+                None,
+            )
+            .await
+            .unwrap();
 
         let surface_caps = surface.get_capabilities(&adapter);
 
-        let surface_format = surface_caps.formats
+        let surface_format = surface_caps
+            .formats
             .iter()
             .find(|f| f.is_srgb())
             .copied()
@@ -174,7 +172,6 @@ impl<'a> Render<'a> {
             view_formats: vec![],
         };
 
-
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Triangle render Pipeline Layout"),
@@ -185,16 +182,36 @@ impl<'a> Render<'a> {
                 }],
             });
 
+        let vertex_shader_module = device
+            .create_shader_module(wgpu::include_wgsl!("../../res/shaders/textured.vert.wgsl"));
+        let fragment_shader_module = device
+            .create_shader_module(wgpu::include_wgsl!("../../res/shaders/textured.frag.wgsl"));
 
-        let vertex_shader_module = device.create_shader_module(wgpu::include_wgsl!("../../res/shaders/textured.vert.wgsl"));
-        let fragment_shader_module = device.create_shader_module(wgpu::include_wgsl!("../../res/shaders/textured.frag.wgsl"));
+        let point_render_pipeline = create_pipeline(
+            &device,
+            &render_pipeline_layout,
+            &vertex_shader_module,
+            &fragment_shader_module,
+            surface_config.format.clone(),
+            wgpu::PrimitiveTopology::PointList,
+        );
+        let triangle_render_pipeline = create_pipeline(
+            &device,
+            &render_pipeline_layout,
+            &vertex_shader_module,
+            &fragment_shader_module,
+            surface_config.format.clone(),
+            wgpu::PrimitiveTopology::TriangleList,
+        );
 
-        let point_render_pipeline = create_pipeline(&device, &render_pipeline_layout, &vertex_shader_module, &fragment_shader_module, surface_config.format.clone(), wgpu::PrimitiveTopology::PointList);
-        let triangle_render_pipeline = create_pipeline(&device, &render_pipeline_layout, &vertex_shader_module, &fragment_shader_module, surface_config.format.clone(), wgpu::PrimitiveTopology::TriangleList);
-
-        let board_vertices = normalize_screen_to_ndc(generate_board_vertices(&render_config), render_config.window_size);
-        let panel_vertices = normalize_screen_to_ndc(generate_panel_vertices(&render_config), render_config.window_size);
-
+        let board_vertices = normalize_screen_to_ndc(
+            generate_board_vertices(&render_config),
+            render_config.window_size,
+        );
+        let panel_vertices = normalize_screen_to_ndc(
+            generate_panel_vertices(&render_config),
+            render_config.window_size,
+        );
 
         let board_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Board Vertex Buffer"),
@@ -211,7 +228,10 @@ impl<'a> Render<'a> {
         let cursor_vertex_buffer = create_cursor_buffer(&device);
 
         // for the all board to be filled
-        let board_index_buffer = create_index_buffer(&device, render_config.board_size_cols * render_config.board_size_cols * 6);
+        let board_index_buffer = create_index_buffer(
+            &device,
+            render_config.board_size_cols * render_config.board_size_cols * 6,
+        );
         // there will be at most 4 shapes, 5 cells each, so we could limit it to 20 * 6
         let panel_index_buffer = create_index_buffer(&device, 120);
 
@@ -224,7 +244,10 @@ impl<'a> Render<'a> {
         let device = Rc::new(device);
         let queue = Rc::new(queue);
         let text_system = TextSystem::new(
-            device.clone(), queue.clone(), TextureFormat::Rgba8UnormSrgb, resolution,
+            device.clone(),
+            queue.clone(),
+            TextureFormat::Rgba8UnormSrgb,
+            resolution,
         );
 
         Self {
@@ -264,8 +287,10 @@ impl<'a> Render<'a> {
 
         match self.surface.get_current_texture() {
             Ok(frame) => {
-                let board_vertex_number = (self.user_render_config.board_size_cols + 1) * (self.user_render_config.board_size_cols + 1);
-                let panel_vertex_number = (self.user_render_config.panel_cols + 1) * (self.user_render_config.panel_rows + 1);
+                let board_vertex_number = (self.user_render_config.board_size_cols + 1)
+                    * (self.user_render_config.board_size_cols + 1);
+                let panel_vertex_number = (self.user_render_config.panel_cols + 1)
+                    * (self.user_render_config.panel_rows + 1);
                 let view = frame.texture.create_view(&Default::default());
                 let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Main Render Pass"),
@@ -281,7 +306,11 @@ impl<'a> Render<'a> {
 
                 // DRAW GRID
                 render_pass.set_pipeline(&self.point_render_pipeline);
-                render_pass.set_push_constants(wgpu::ShaderStages::FRAGMENT, 0, cast_slice(&[CursorState::NotACursor as u32]));
+                render_pass.set_push_constants(
+                    wgpu::ShaderStages::FRAGMENT,
+                    0,
+                    cast_slice(&[CursorState::NotACursor as u32]),
+                );
 
                 render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
                 render_pass.draw(0..board_vertex_number as u32, 0..1); // draw just indices
@@ -292,18 +321,21 @@ impl<'a> Render<'a> {
                 // DRAW cells: board and panel
                 render_pass.set_pipeline(&self.triangle_render_pipeline);
 
-
                 //todo If board changed
                 render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
-                self.queue.write_buffer(&self.board_index_buffer, 0, cast_slice(&board_indices));
-                render_pass.set_index_buffer(self.board_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                self.queue
+                    .write_buffer(&self.board_index_buffer, 0, cast_slice(&board_indices));
+                render_pass
+                    .set_index_buffer(self.board_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..board_indices.len() as u32, 0, 0..1);
 
                 // ✅ Bind the panel buffers ONCE, then draw all panel elements
                 //todo If panel changed
                 render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
-                self.queue.write_buffer(&self.panel_index_buffer, 0, cast_slice(&panel_indices));
-                render_pass.set_index_buffer(self.panel_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                self.queue
+                    .write_buffer(&self.panel_index_buffer, 0, cast_slice(&panel_indices));
+                render_pass
+                    .set_index_buffer(self.panel_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..panel_indices.len() as u32, 0, 0..2);
 
                 // ✅ Cursor changes every frame, so we must update the buffer.
@@ -311,21 +343,41 @@ impl<'a> Render<'a> {
                 let mut cursor_offset_len: u32 = 0;
                 let mut cursor_offset_bytes: usize = 0;
                 if let Some(selected_shape) = &state.selected_shape {
-                    let cursor_shape_vertices = render_cursor_shape(&state.mouse_position, selected_shape, self.user_render_config.cell_size_px, &self.user_render_config.window_size);
+                    let cursor_shape_vertices = render_cursor_shape(
+                        &state.mouse_position,
+                        selected_shape,
+                        self.user_render_config.cell_size_px,
+                        &self.user_render_config.window_size,
+                    );
                     cursor_offset_len = cursor_shape_vertices.len() as u32;
                     cursor_offset_bytes = cursor_shape_vertices.len() * size_of::<Vertex>();
                     // println!("Cursor selected vertices are {:?}", cursor_shape_vertices);
-                    self.queue.write_buffer(&self.cursor_vertex_buffer, 0, cast_slice(&cursor_shape_vertices));
+                    self.queue.write_buffer(
+                        &self.cursor_vertex_buffer,
+                        0,
+                        cast_slice(&cursor_shape_vertices),
+                    );
                 }
                 // then we draw the cursor
-                let new_cursor_vertices = render_cursor(&state.mouse_position, &self.user_render_config.cursor_size, &self.user_render_config.window_size);
-                self.queue.write_buffer(&self.cursor_vertex_buffer, cursor_offset_bytes as BufferAddress, cast_slice(&new_cursor_vertices));
+                let new_cursor_vertices = render_cursor(
+                    &state.mouse_position,
+                    &self.user_render_config.cursor_size,
+                    &self.user_render_config.window_size,
+                );
+                self.queue.write_buffer(
+                    &self.cursor_vertex_buffer,
+                    cursor_offset_bytes as BufferAddress,
+                    cast_slice(&new_cursor_vertices),
+                );
                 render_pass.set_vertex_buffer(0, self.cursor_vertex_buffer.slice(..));
 
                 render_pass.draw(0..cursor_offset_len, 0..1);
-                render_pass.set_push_constants(wgpu::ShaderStages::FRAGMENT, 0, cast_slice(&[CursorState::Cursor as u32]));
+                render_pass.set_push_constants(
+                    wgpu::ShaderStages::FRAGMENT,
+                    0,
+                    cast_slice(&[CursorState::Cursor as u32]),
+                );
                 render_pass.draw(cursor_offset_len..(6 + cursor_offset_len), 0..1);
-
 
                 self.text_system.set_score_text(state.score);
                 self.text_system.render_score(&mut render_pass);
@@ -346,23 +398,50 @@ impl<'a> Render<'a> {
     }
 }
 
-fn render_cursor(mouse_pos: &(usize, usize), cursor_size: &f32, physical_size: &PhysicalSize<u32>) -> [Vertex; 6] {
+fn render_cursor(
+    mouse_pos: &(usize, usize),
+    cursor_size: &f32,
+    physical_size: &PhysicalSize<u32>,
+) -> [Vertex; 6] {
     let mouse_x = mouse_pos.0 as f32;
     let mouse_y = mouse_pos.1 as f32;
     let half_size = cursor_size / 2.0;
 
-
-    let bot_left = Vertex::ndc_vertex(mouse_x - half_size, mouse_y - half_size, physical_size, true);
-    let bot_right = Vertex::ndc_vertex(mouse_x + half_size, mouse_y - half_size, physical_size, true);
-    let top_right = Vertex::ndc_vertex(mouse_x + half_size, mouse_y + half_size, physical_size, true);
-    let top_left = Vertex::ndc_vertex(mouse_x - half_size, mouse_y + half_size, physical_size, true);
+    let bot_left = Vertex::ndc_vertex(
+        mouse_x - half_size,
+        mouse_y - half_size,
+        physical_size,
+        true,
+    );
+    let bot_right = Vertex::ndc_vertex(
+        mouse_x + half_size,
+        mouse_y - half_size,
+        physical_size,
+        true,
+    );
+    let top_right = Vertex::ndc_vertex(
+        mouse_x + half_size,
+        mouse_y + half_size,
+        physical_size,
+        true,
+    );
+    let top_left = Vertex::ndc_vertex(
+        mouse_x - half_size,
+        mouse_y + half_size,
+        physical_size,
+        true,
+    );
     [
-        bot_right, bot_left, top_left,
-        bot_right, top_left, top_right
+        bot_right, bot_left, top_left, bot_right, top_left, top_right,
     ]
 }
 
-fn render_cursor_shape(mouse_pos: &(usize, usize), selected_shape: &SelectedShape, cell_size_px: f32, physical_size: &PhysicalSize<u32>) -> Vec<Vertex> {
+fn render_cursor_shape(
+    mouse_pos: &(usize, usize),
+    selected_shape: &SelectedShape,
+    cell_size_px: f32,
+    physical_size: &PhysicalSize<u32>,
+) -> Vec<Vertex> {
     let mouse_x = mouse_pos.0 as f32;
     let mouse_y = mouse_pos.1 as f32;
     let zero = XY(mouse_x, mouse_y).apply_offset(&selected_shape.anchor_offset);
@@ -372,13 +451,32 @@ fn render_cursor_shape(mouse_pos: &(usize, usize), selected_shape: &SelectedShap
     for cell in cells {
         let cell_x_offset = cell.0 as f32 * cell_size_px;
         let cell_y_offset = cell.1 as f32 * cell_size_px;
-        let top_left = Vertex::ndc_vertex(zero.0 + cell_x_offset, zero.1 + cell_y_offset, physical_size, true);
-        let bot_left = Vertex::ndc_vertex(zero.0 + cell_x_offset, zero.1 + cell_size_px + cell_y_offset, physical_size, true);
-        let bot_right = Vertex::ndc_vertex(zero.0 + cell_size_px + cell_x_offset, zero.1 + cell_size_px + cell_y_offset, physical_size, true);
-        let top_right = Vertex::ndc_vertex(zero.0 + cell_size_px + cell_x_offset, zero.1 + cell_y_offset, physical_size, true);
+        let top_left = Vertex::ndc_vertex(
+            zero.0 + cell_x_offset,
+            zero.1 + cell_y_offset,
+            physical_size,
+            true,
+        );
+        let bot_left = Vertex::ndc_vertex(
+            zero.0 + cell_x_offset,
+            zero.1 + cell_size_px + cell_y_offset,
+            physical_size,
+            true,
+        );
+        let bot_right = Vertex::ndc_vertex(
+            zero.0 + cell_size_px + cell_x_offset,
+            zero.1 + cell_size_px + cell_y_offset,
+            physical_size,
+            true,
+        );
+        let top_right = Vertex::ndc_vertex(
+            zero.0 + cell_size_px + cell_x_offset,
+            zero.1 + cell_y_offset,
+            physical_size,
+            true,
+        );
         vertex_result.extend(&[
-            bot_left, bot_right, top_left,
-            top_left, bot_right, top_right
+            bot_left, bot_right, top_left, top_left, bot_right, top_right,
         ])
     }
     vertex_result
@@ -404,12 +502,14 @@ fn create_index_buffer(device: &wgpu::Device, max_indices: usize) -> wgpu::Buffe
     })
 }
 
-fn create_pipeline(device: &wgpu::Device,
-                   render_pipeline_layout: &PipelineLayout,
-                   vertex_shader_module: &ShaderModule,
-                   fragment_shader_module: &ShaderModule,
-                   format: TextureFormat,
-                   topology: wgpu::PrimitiveTopology) -> wgpu::RenderPipeline {
+fn create_pipeline(
+    device: &wgpu::Device,
+    render_pipeline_layout: &PipelineLayout,
+    vertex_shader_module: &ShaderModule,
+    fragment_shader_module: &ShaderModule,
+    format: TextureFormat,
+    topology: wgpu::PrimitiveTopology,
+) -> wgpu::RenderPipeline {
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Render Pipeline"),
         layout: Some(&render_pipeline_layout),
@@ -447,11 +547,11 @@ fn create_pipeline(device: &wgpu::Device,
         },
         depth_stencil: None,
         multisample: wgpu::MultisampleState {
-            count: 1, // 2.
-            mask: !0, // 3.
+            count: 1,                         // 2.
+            mask: !0,                         // 3.
             alpha_to_coverage_enabled: false, // 4.
         },
         multiview: None, // 5.
-        cache: None, // 6.
+        cache: None,     // 6.
     })
 }

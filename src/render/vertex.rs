@@ -1,5 +1,5 @@
-use winit::dpi::PhysicalSize;
 use crate::render::render::UserRenderConfig;
+use winit::dpi::PhysicalSize;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Vertex {
@@ -21,11 +21,15 @@ impl Vertex {
     };
 
     pub fn new(x: f32, y: f32) -> Self {
-        Self { position: (x, y).into() }
+        Self {
+            position: (x, y).into(),
+        }
     }
 
     pub fn from_uszie(x: usize, y: usize) -> Self {
-        Self { position: (x as f32, y as f32).into() }
+        Self {
+            position: (x as f32, y as f32).into(),
+        }
     }
 
     pub fn ndc_vertex(x: f32, y: f32, size: &PhysicalSize<u32>, clamped: bool) -> Self {
@@ -37,19 +41,13 @@ impl Vertex {
             Self::new(ndc_x.max(-1.0).min(1.0), ndc_y.max(-1.0).min(1.0))
         } else {
             Self::new(ndc_x, ndc_y)
-
         }
     }
-
 }
-
-
 
 pub fn normalize_screen_to_ndc(v: Vec<Vertex>, size: PhysicalSize<u32>) -> Vec<Vertex> {
     v.into_iter()
-        .map(|vertex| {
-            Vertex::ndc_vertex(vertex.position.x, vertex.position.y, &size, false)
-        })
+        .map(|vertex| Vertex::ndc_vertex(vertex.position.x, vertex.position.y, &size, false))
         .collect()
 }
 
@@ -57,8 +55,10 @@ pub fn generate_panel_vertices(user_render_config: &UserRenderConfig) -> Vec<Ver
     let mut vertices = Vec::new();
     for row in 0..=user_render_config.panel_rows {
         for col in 0..=user_render_config.panel_cols {
-            let x = col as f32 * user_render_config.cell_size_px + user_render_config.panel_offset_x_px;
-            let y = row as f32 * user_render_config.cell_size_px + user_render_config.panel_offset_y_px;
+            let x =
+                col as f32 * user_render_config.cell_size_px + user_render_config.panel_offset_x_px;
+            let y =
+                row as f32 * user_render_config.cell_size_px + user_render_config.panel_offset_y_px;
             vertices.push(Vertex::new(x, y));
         }
     }
@@ -71,8 +71,10 @@ pub fn generate_board_vertices(user_render_config: &UserRenderConfig) -> Vec<Ver
 
     for row in 0..=user_render_config.board_size_cols {
         for col in 0..=user_render_config.board_size_cols {
-            let x = col as f32 * user_render_config.cell_size_px + user_render_config.board_offset_x_px;
-            let y = row as f32 * user_render_config.cell_size_px + user_render_config.board_offset_y_px;
+            let x =
+                col as f32 * user_render_config.cell_size_px + user_render_config.board_offset_x_px;
+            let y =
+                row as f32 * user_render_config.cell_size_px + user_render_config.board_offset_y_px;
             vertices.push(Vertex::new(x, y));
         }
     }

@@ -1,9 +1,9 @@
-use std::cmp::max;
-use std::collections::{HashMap};
-use cgmath::num_traits::ToPrimitive;
-use rand::prelude::SliceRandom;
 use crate::game_entities::ShapeState::VISIBLE;
 use crate::space_converters::{CellCoord, OffsetXY};
+use cgmath::num_traits::ToPrimitive;
+use rand::prelude::SliceRandom;
+use std::cmp::max;
+use std::collections::HashMap;
 use strum::IntoEnumIterator;
 use strum_macros::{EnumCount, EnumIter};
 
@@ -95,7 +95,6 @@ impl ShapeType {
     }
 }
 
-
 #[derive(Clone, PartialEq, Debug)]
 pub struct Shape {
     pub kind: ShapeType,
@@ -139,7 +138,10 @@ impl Shape {
             .map(|shape| {
                 let position = current_col_offset;
                 current_col_offset += shape.horizontal_cell_size() + 1; // Update for the next shape
-                println!("generating start cell x {:?} for shape type  {:?}", position, shape);
+                println!(
+                    "generating start cell x {:?} for shape type  {:?}",
+                    position, shape
+                );
                 return Shape::new(*shape, position);
             })
             .collect()
@@ -184,7 +186,10 @@ impl Panel {
             max_dx = 0;
         }
 
-        return Panel { shape_choice, shapes_in_cell_space: result };
+        return Panel {
+            shape_choice,
+            shapes_in_cell_space: result,
+        };
     }
 
     pub fn generate_for_3() -> Self {
@@ -206,8 +211,11 @@ impl GameState {
     }
 
     pub fn is_valid_placement(&self, shape: &ShapeType, cell_coord: &CellCoord) -> bool {
-        if cell_coord.row < 0 || cell_coord.row >= self.board.size as i16 ||
-            cell_coord.col < 0 || cell_coord.col >= self.board.size as i16 {
+        if cell_coord.row < 0
+            || cell_coord.row >= self.board.size as i16
+            || cell_coord.col < 0
+            || cell_coord.col >= self.board.size as i16
+        {
             return false;
         }
         let col = cell_coord.col.to_usize().unwrap();
@@ -224,9 +232,14 @@ impl GameState {
     }
 
     pub fn place_shape(&mut self, shape_type: &ShapeType, cell_coord: &CellCoord) {
-        assert!(cell_coord.row >= 0 && cell_coord.row < self.board.size.to_i16().unwrap() &&
-                    cell_coord.col >= 0 && cell_coord.col < self.board.size.to_i16().unwrap(),
-                "error placing cell out of the board {:?}", cell_coord);
+        assert!(
+            cell_coord.row >= 0
+                && cell_coord.row < self.board.size.to_i16().unwrap()
+                && cell_coord.col >= 0
+                && cell_coord.col < self.board.size.to_i16().unwrap(),
+            "error placing cell out of the board {:?}",
+            cell_coord
+        );
         for (dx, dy) in shape_type.cells() {
             let col = cell_coord.col as usize + dx;
             let row = cell_coord.row as usize + dy;
@@ -282,9 +295,15 @@ mod tests {
 
         let expected = vec![
             // First shape (I)
-            (0, 0), (1, 0), (2, 0), (3, 0),
+            (0, 0),
+            (1, 0),
+            (2, 0),
+            (3, 0),
             // Second shape (O) should be placed with an offset
-            (5, 0), (5, 1), (6, 0), (6, 1),
+            (5, 0),
+            (5, 1),
+            (6, 0),
+            (6, 1),
         ];
 
         assert_eq!(result.shapes_in_cell_space, expected);

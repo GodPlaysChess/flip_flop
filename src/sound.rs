@@ -23,7 +23,7 @@ impl SoundSystem {
             [-1.0, 0.0, 0.0],
             [1.0, 0.0, 0.0],
         )
-            .unwrap();
+        .unwrap();
 
         Self {
             stream,

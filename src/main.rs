@@ -1,6 +1,11 @@
 use std::collections::VecDeque;
-use winit::{event::*, event_loop::EventLoop, keyboard::{KeyCode, PhysicalKey}, window::WindowBuilder};
 use winit::event_loop::EventLoopWindowTarget;
+use winit::{
+    event::*,
+    event_loop::EventLoop,
+    keyboard::{KeyCode, PhysicalKey},
+    window::WindowBuilder,
+};
 
 use render::render::Render;
 
@@ -8,16 +13,16 @@ use crate::events::Event::{ScoreUpdated, SelectedShapePlaced};
 use crate::game_entities::{Cell, GameState, SelectedShape, ShapeState};
 use crate::input::Input;
 use crate::render::render::UserRenderConfig;
-use crate::system::{PlacementSystem, SelectionValidationSystem, System, ScoreCleanupSystem};
+use crate::system::{PlacementSystem, ScoreCleanupSystem, SelectionValidationSystem, System};
 
-mod game_entities;
 mod events;
-mod render;
-mod logic;
-mod system;
+mod game_entities;
 mod input;
+mod logic;
+mod render;
 mod sound;
 mod space_converters;
+mod system;
 
 pub async fn run() {
     let config = UserRenderConfig::default();
@@ -29,7 +34,8 @@ pub async fn run() {
         .with_visible(false)
         .with_title("flip flop")
         .with_inner_size(size)
-        .build(&event_loop).unwrap();
+        .build(&event_loop)
+        .unwrap();
 
     window.set_cursor_visible(false);
 
@@ -49,109 +55,145 @@ pub async fn run() {
     let placement_system = PlacementSystem;
     let score_cleanup_system = ScoreCleanupSystem;
 
-
     window.set_visible(true);
     let mut last_time = instant::Instant::now();
-
 
     // logic::handle_input(&mut game, &window, &mut game_event_queue);
     // logic::game_loop(&mut game, &mut game_event_queue);
 
     let window = &window;
     let mut cursor_position = (0.0, 0.0);
-    event_loop.run(move |event, control_flow| {
-        match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested | WindowEvent::KeyboardInput {
-                    event: KeyEvent {
-                        state: ElementState::Pressed,
-                        physical_key: PhysicalKey::Code(KeyCode::Escape),
-                        ..
-                    },
+    event_loop
+        .run(move |event, control_flow| {
+            match event {
+                Event::WindowEvent {
+                    event:
+                        WindowEvent::CloseRequested
+                        | WindowEvent::KeyboardInput {
+                            event:
+                                KeyEvent {
+                                    state: ElementState::Pressed,
+                                    physical_key: PhysicalKey::Code(KeyCode::Escape),
+                                    ..
+                                },
+                            ..
+                        },
                     ..
-                }, ..
-            } => control_flow.exit(),
-            Event::WindowEvent {
-                event: WindowEvent::KeyboardInput {
-                    event: KeyEvent {
-                        state: element_state,
-                        physical_key: PhysicalKey::Code(key),
-                        ..
-                    },
+                } => control_flow.exit(),
+                Event::WindowEvent {
+                    event:
+                        WindowEvent::KeyboardInput {
+                            event:
+                                KeyEvent {
+                                    state: element_state,
+                                    physical_key: PhysicalKey::Code(key),
+                                    ..
+                                },
+                            ..
+                        },
                     ..
-                },
-                ..
-            } => {
-                let input_handled = input.update_kb(&key, &element_state);
-                if !input_handled {
-                    ignore_input(&element_state, &key, control_flow);
-                }
-            }
-            Event::WindowEvent {
-                event: WindowEvent::CursorMoved {
-                    position,
-                    ..
-                }, ..
-            } => {
-                input.update_mouse_position(position);
-
-                // todo @1 move to input. no need to keep this info in mouse position
-                cursor_position = (position.x, position.y);
-                game.mouse_position = (position.x as usize, position.y as usize);
-            }
-            Event::WindowEvent {
-                event: WindowEvent::MouseInput { button, state, .. },
-                ..
-            } => {
-                input.update_mouse(&button, &state);
-            }
-            Event::WindowEvent {
-                event: WindowEvent::RedrawRequested, ..
-            } => {
-                let dt = last_time.elapsed();
-                last_time = instant::Instant::now();
-                window.request_redraw();
-
-                selection_system.update_state(&input, dt, &mut game, &mut game_event_queue, &config, None);
-
-                while let Some(event) = game_event_queue.pop_front() {
-                    match event {
-                        ScoreUpdated(u32) => {
-                            sound_system.queue(sound_pack.bounce());
-                        }
-
-                        events::Event::ShapeSelected(n, coord) => {
-                            game.deselect();
-                            let selected_shape = game.panel.shape_choice.get_mut(n).unwrap();
-                            game.selected_shape = Some(SelectedShape { shape_type: selected_shape.kind, anchor_offset: coord });
-                            selected_shape.set_state(ShapeState::SELECTED);
-                            println!("Shape {:?} is selected", &selected_shape);
-                        }
-                        SelectedShapePlaced(_, _) => {
-                            placement_system.update_state(&input, dt, &mut game, &mut game_event_queue, &config, Some(&event));
-                            score_cleanup_system.update_state(&input, dt, &mut game, &mut game_event_queue, &config, None)
-                        }
+                } => {
+                    let input_handled = input.update_kb(&key, &element_state);
+                    if !input_handled {
+                        ignore_input(&element_state, &key, control_flow);
                     }
                 }
+                Event::WindowEvent {
+                    event: WindowEvent::CursorMoved { position, .. },
+                    ..
+                } => {
+                    input.update_mouse_position(position);
 
-                score_cleanup_system.update_state(&input, dt, &mut game, &mut game_event_queue, &config, None);
+                    // todo @1 move to input. no need to keep this info in mouse position
+                    cursor_position = (position.x, position.y);
+                    game.mouse_position = (position.x as usize, position.y as usize);
+                }
+                Event::WindowEvent {
+                    event: WindowEvent::MouseInput { button, state, .. },
+                    ..
+                } => {
+                    input.update_mouse(&button, &state);
+                }
+                Event::WindowEvent {
+                    event: WindowEvent::RedrawRequested,
+                    ..
+                } => {
+                    let dt = last_time.elapsed();
+                    last_time = instant::Instant::now();
+                    window.request_redraw();
 
-                // todo pass UI instead of game?
-                render.render_state(&game);
-                input.reset();
-                window.request_redraw();
+                    selection_system.update_state(
+                        &input,
+                        dt,
+                        &mut game,
+                        &mut game_event_queue,
+                        &config,
+                        None,
+                    );
+
+                    while let Some(event) = game_event_queue.pop_front() {
+                        match event {
+                            ScoreUpdated(u32) => {
+                                sound_system.queue(sound_pack.bounce());
+                            }
+
+                            events::Event::ShapeSelected(n, coord) => {
+                                game.deselect();
+                                let selected_shape = game.panel.shape_choice.get_mut(n).unwrap();
+                                game.selected_shape = Some(SelectedShape {
+                                    shape_type: selected_shape.kind,
+                                    anchor_offset: coord,
+                                });
+                                selected_shape.set_state(ShapeState::SELECTED);
+                                println!("Shape {:?} is selected", &selected_shape);
+                            }
+                            SelectedShapePlaced(_, _) => {
+                                placement_system.update_state(
+                                    &input,
+                                    dt,
+                                    &mut game,
+                                    &mut game_event_queue,
+                                    &config,
+                                    Some(&event),
+                                );
+                                score_cleanup_system.update_state(
+                                    &input,
+                                    dt,
+                                    &mut game,
+                                    &mut game_event_queue,
+                                    &config,
+                                    None,
+                                )
+                            }
+                        }
+                    }
+
+                    score_cleanup_system.update_state(
+                        &input,
+                        dt,
+                        &mut game,
+                        &mut game_event_queue,
+                        &config,
+                        None,
+                    );
+
+                    // todo pass UI instead of game?
+                    render.render_state(&game);
+                    input.reset();
+                    window.request_redraw();
+                }
+
+                Event::WindowEvent {
+                    event: WindowEvent::Resized(size),
+                    ..
+                } => {
+                    render.resize(size);
+                }
+
+                _ => {}
             }
-
-            Event::WindowEvent {
-                event: WindowEvent::Resized(size),
-                ..
-            } => {
-                render.resize(size);
-            }
-
-            _ => {}
-        }
-    }).unwrap();
+        })
+        .unwrap();
 }
 
 fn ignore_input(
@@ -233,5 +275,3 @@ fn main() {
     //     last_time = now;
     // }
 }
-
-
