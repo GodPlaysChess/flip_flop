@@ -156,7 +156,6 @@ pub struct GameState {
 
     // this one is not really game state. It's like UI or smth. also it's XY
     pub mouse_position: (usize, usize),
-    pub last_click_position: (usize, usize),
     pub panel: Panel,
 }
 
@@ -202,7 +201,6 @@ impl GameState {
             selected_shape: None,
             score: 0,
             mouse_position: (0, 0),
-            last_click_position: (0, 0),
             panel,
         }
     }
@@ -233,7 +231,7 @@ impl GameState {
             let col = cell_coord.col as usize + dx;
             let row = cell_coord.row as usize + dy;
 
-            &mut self.board.set_cell(col, row, Cell::Filled);
+            self.board.set_cell(col, row, Cell::Filled);
         }
 
         self.selected_shape = None;

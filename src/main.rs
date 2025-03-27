@@ -62,6 +62,16 @@ pub async fn run() {
     event_loop.run(move |event, control_flow| {
         match event {
             Event::WindowEvent {
+                event: WindowEvent::CloseRequested | WindowEvent::KeyboardInput {
+                    event: KeyEvent {
+                        state: ElementState::Pressed,
+                        physical_key: PhysicalKey::Code(KeyCode::Escape),
+                        ..
+                    },
+                    ..
+                }, ..
+            } => control_flow.exit(),
+            Event::WindowEvent {
                 event: WindowEvent::KeyboardInput {
                     event: KeyEvent {
                         state: element_state,
@@ -85,7 +95,7 @@ pub async fn run() {
             } => {
                 input.update_mouse_position(position);
 
-                // todo move to input. no need to keep this info in mouse position
+                // todo @1 move to input. no need to keep this info in mouse position
                 cursor_position = (position.x, position.y);
                 game.mouse_position = (position.x as usize, position.y as usize);
             }
@@ -112,7 +122,7 @@ pub async fn run() {
 
                         events::Event::ShapeSelected(n, coord) => {
                             game.deselect();
-                            let mut selected_shape = game.panel.shape_choice.get_mut(n).unwrap();
+                            let selected_shape = game.panel.shape_choice.get_mut(n).unwrap();
                             game.selected_shape = Some(SelectedShape { shape_type: selected_shape.kind, anchor_offset: coord });
                             selected_shape.set_state(ShapeState::SELECTED);
                             println!("Shape {:?} is selected", &selected_shape);
@@ -131,16 +141,6 @@ pub async fn run() {
                 input.reset();
                 window.request_redraw();
             }
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested | WindowEvent::KeyboardInput {
-                    event: KeyEvent {
-                        state: ElementState::Pressed,
-                        physical_key: PhysicalKey::Code(KeyCode::Escape),
-                        ..
-                    },
-                    ..
-                }, ..
-            } => control_flow.exit(),
 
             Event::WindowEvent {
                 event: WindowEvent::Resized(size),

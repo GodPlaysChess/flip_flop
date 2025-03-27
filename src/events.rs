@@ -14,12 +14,3 @@ pub enum Event {
     // mouse moved with shape selected
     // board highlight
 }
-
-
-
-#[derive(Debug, Copy, Clone)]
-pub struct BoardUpdate {
-    pub cell: Cell,
-    pub coord: CellCoord,
-}
-

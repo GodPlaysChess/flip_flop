@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-use minifb::Key::P;
 use crate::game_entities::{Board, Cell, Panel};
 use crate::game_entities::ShapeState::VISIBLE;
 

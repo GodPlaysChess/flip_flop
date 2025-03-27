@@ -1,18 +1,17 @@
-use std::cmp::max;
-use std::collections::HashMap;
 use std::iter;
+use std::rc::Rc;
+
 use bytemuck::cast_slice;
-use cgmath::Vector2;
+use glyphon::{    Resolution};
 use wgpu::{BufferAddress, MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat, TextureUsages};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
-// use wgpu_glyph::{ab_glyph, Section, Text};
-use crate::game_entities::{Board, Cell, GameState, SelectedShape, Shape};
+use crate::game_entities::{GameState, SelectedShape};
+use crate::render::text_system::{TextSystem};
 use crate::render::vertex::{CursorState, generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, Vertex};
 use crate::space_converters::{render_board, render_panel, XY};
-
 
 const FONT_BYTES: &[u8] = include_bytes!("../../res/DejaVuSans.ttf");
 
@@ -21,8 +20,8 @@ pub struct Render<'a> {
     surface_config: SurfaceConfiguration,
 
     adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    device: Rc<wgpu::Device>,
+    queue: Rc<wgpu::Queue>,
     point_render_pipeline: wgpu::RenderPipeline,
     triangle_render_pipeline: wgpu::RenderPipeline,
 
@@ -34,6 +33,7 @@ pub struct Render<'a> {
     panel_index_buffer: wgpu::Buffer,
 
     user_render_config: UserRenderConfig,
+    text_system: TextSystem,
 
     // glyph_brush: wgpu_glyph::GlyphBrush<()>,
     // staging_belt: wgpu::util::StagingBelt,
@@ -216,13 +216,16 @@ impl<'a> Render<'a> {
         let panel_index_buffer = create_index_buffer(&device, 120);
 
         surface.configure(&device, &surface_config);
+        let resolution = Resolution {
+            width: physical_width,
+            height: physical_width,
+        };
 
-
-        // let font = ab_glyph::FontArc::try_from_slice(FONT_BYTES).unwrap();
-        // let glyph_brush =
-        //     wgpu_glyph::GlyphBrushBuilder::using_font(font).build(&device, config.format);
-        // let staging_belt = wgpu::util::StagingBelt::new(1024);
-
+        let device = Rc::new(device);
+        let queue = Rc::new(queue);
+        let text_system = TextSystem::new(
+            device.clone(), queue.clone(), TextureFormat::Rgba8UnormSrgb, resolution,
+        );
 
         Self {
             surface,
@@ -238,8 +241,7 @@ impl<'a> Render<'a> {
             board_index_buffer,
             panel_index_buffer,
             user_render_config: render_config,
-            // glyph_brush,
-            // staging_belt,
+            text_system,
         }
     }
 
@@ -324,6 +326,9 @@ impl<'a> Render<'a> {
                 render_pass.set_push_constants(wgpu::ShaderStages::FRAGMENT, 0, cast_slice(&[CursorState::Cursor as u32]));
                 render_pass.draw(cursor_offset_len..(6 + cursor_offset_len), 0..1);
 
+
+                self.text_system.set_score_text(state.score);
+                self.text_system.render_score(&mut render_pass);
                 drop(render_pass);
 
                 // self.staging_belt.finish();

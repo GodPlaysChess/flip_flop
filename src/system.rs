@@ -1,10 +1,10 @@
 use std::collections::VecDeque;
 use std::time::Duration;
-use rodio::cpal::Sample;
-use crate::events::{Event};
+
+use crate::events::Event;
 use crate::events::Event::{SelectedShapePlaced, ShapeSelected};
+use crate::game_entities::{Cell, GameState, Panel, ShapeState};
 use crate::input;
-use crate::game_entities::{Cell, GameState, Panel, ShapeState, ShapeType};
 use crate::input::Input;
 use crate::render::render::UserRenderConfig;
 use crate::space_converters::{CellCoord, OffsetXY, to_cell_space, within_bounds, XY};
