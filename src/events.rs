@@ -1,4 +1,4 @@
-use crate::game_entities::{Cell, ShapeType};
+use crate::game_entities::ShapeType;
 use crate::space_converters::{CellCoord, OffsetXY};
 
 #[derive(Debug, Clone)]
