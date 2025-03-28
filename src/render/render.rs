@@ -4,10 +4,7 @@ use std::rc::Rc;
 use bytemuck::cast_slice;
 use glyphon::Resolution;
 use wgpu::util::DeviceExt;
-use wgpu::{
-    BufferAddress, MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat,
-    TextureUsages,
-};
+use wgpu::{BufferAddress, ColorTargetState, Device, FragmentState, MemoryHints, PipelineLayout, RenderPipelineDescriptor, ShaderModule, SurfaceConfiguration, TextureFormat, TextureUsages, VertexState};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
@@ -19,30 +16,8 @@ use crate::render::vertex::{
 };
 use crate::space_converters::{render_board, render_panel, XY};
 
-const FONT_BYTES: &[u8] = include_bytes!("../../res/DejaVuSans.ttf");
+pub const FONT_BYTES: &[u8] = include_bytes!("../../res/DejaVuSans.ttf");
 
-pub struct Render<'a> {
-    pub surface: wgpu::Surface<'a>,
-    surface_config: SurfaceConfiguration,
-
-    adapter: wgpu::Adapter,
-    device: Rc<wgpu::Device>,
-    queue: Rc<wgpu::Queue>,
-    point_render_pipeline: wgpu::RenderPipeline,
-    triangle_render_pipeline: wgpu::RenderPipeline,
-
-    board_vertex_buffer: wgpu::Buffer,
-    panel_vertex_buffer: wgpu::Buffer,
-    cursor_vertex_buffer: wgpu::Buffer,
-
-    board_index_buffer: wgpu::Buffer,
-    panel_index_buffer: wgpu::Buffer,
-
-    user_render_config: UserRenderConfig,
-    text_system: TextSystem,
-    // glyph_brush: wgpu_glyph::GlyphBrush<()>,
-    // staging_belt: wgpu::util::StagingBelt,
-}
 #[derive(Clone)]
 pub struct UserRenderConfig {
     pub window_size: PhysicalSize<u32>,
@@ -97,6 +72,31 @@ impl UserRenderConfig {
             panel_offset_y_px, // Correctly computed here
         }
     }
+}
+
+pub struct Render<'a> {
+    pub surface: wgpu::Surface<'a>,
+    surface_config: SurfaceConfiguration,
+
+    adapter: wgpu::Adapter,
+    device: Rc<Device>,
+    queue: Rc<wgpu::Queue>,
+    point_render_pipeline: wgpu::RenderPipeline,
+    triangle_render_pipeline: wgpu::RenderPipeline,
+
+    outline_render_pipeline: wgpu::RenderPipeline,
+    shape_render_pipeline: wgpu::RenderPipeline,
+    depth_stencil_view: wgpu::TextureView,
+
+    board_vertex_buffer: wgpu::Buffer,
+    panel_vertex_buffer: wgpu::Buffer,
+    cursor_vertex_buffer: wgpu::Buffer,
+
+    board_index_buffer: wgpu::Buffer,
+    panel_index_buffer: wgpu::Buffer,
+
+    user_render_config: UserRenderConfig,
+    text_system: TextSystem,
 }
 
 impl<'a> Render<'a> {
@@ -205,6 +205,39 @@ impl<'a> Render<'a> {
             wgpu::PrimitiveTopology::TriangleList,
         );
 
+        let outline_render_pipeline = create_shadow_pipeline(
+            &device,
+            &vertex_shader_module,
+            &fragment_shader_module,
+            surface_config.format.clone(),
+            true,
+        );
+
+        let shape_render_pipeline = create_shadow_pipeline(
+            &device,
+            &vertex_shader_module,
+            &fragment_shader_module,
+            surface_config.format.clone(),
+            false,
+        );
+
+        let depth_stencil_texture = device.create_texture(&wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: surface_config.width.max(1),
+                height: surface_config.height.max(1),
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: TextureFormat::Depth24PlusStencil8, // Stencil-enabled format
+            usage: TextureUsages::RENDER_ATTACHMENT,
+            label: Some("Depth Stencil Buffer"),
+            view_formats: &[],
+        });
+        let depth_stencil_view =
+            depth_stencil_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
         let board_vertices = normalize_screen_to_ndc(
             generate_board_vertices(&render_config),
             render_config.window_size,
@@ -259,6 +292,9 @@ impl<'a> Render<'a> {
             surface_config,
             point_render_pipeline,
             triangle_render_pipeline,
+            outline_render_pipeline,
+            shape_render_pipeline,
+            depth_stencil_view,
             board_vertex_buffer,
             panel_vertex_buffer,
             cursor_vertex_buffer,
@@ -285,14 +321,15 @@ impl<'a> Render<'a> {
         //todo add cursor shadow
         let board_indices = render_board(&state.board);
         let panel_indices = render_panel(&state.panel, self.user_render_config.panel_cols);
+        let board_vertex_number = (self.user_render_config.board_size_cols + 1)
+            * (self.user_render_config.board_size_cols + 1);
+        let panel_vertex_number = (self.user_render_config.panel_cols + 1)
+            * (self.user_render_config.panel_rows + 1);
 
         match self.surface.get_current_texture() {
             Ok(frame) => {
-                let board_vertex_number = (self.user_render_config.board_size_cols + 1)
-                    * (self.user_render_config.board_size_cols + 1);
-                let panel_vertex_number = (self.user_render_config.panel_cols + 1)
-                    * (self.user_render_config.panel_rows + 1);
                 let view = frame.texture.create_view(&Default::default());
+
                 let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Main Render Pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -300,7 +337,14 @@ impl<'a> Render<'a> {
                         resolve_target: None,
                         ops: wgpu::Operations::default(),
                     })],
-                    depth_stencil_attachment: None,
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.depth_stencil_view, // Attach stencil buffer
+                        depth_ops: None,                // We don't need depth testing for 2D shapes
+                        stencil_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(0), // Clear stencil buffer at start of frame
+                            store: wgpu::StoreOp::Store,  // Store stencil results
+                        }),
+                    }),
                     timestamp_writes: None,
                     occlusion_query_set: None,
                 });
@@ -339,11 +383,28 @@ impl<'a> Render<'a> {
                     .set_index_buffer(self.panel_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..panel_indices.len() as u32, 0, 0..2);
 
+                // render score text
+                self.text_system.set_score_text(state.score);
+                self.text_system.render_score(&mut render_pass);
+                drop(render_pass);
+
                 // ✅ Cursor changes every frame, so we must update the buffer.
                 // first we draw cursor as shape
                 let mut cursor_offset_len: u32 = 0;
                 let mut cursor_offset_bytes: usize = 0;
                 if let Some(selected_shape) = &state.selected_shape {
+                    //todo @1 render cursor shadow here.
+                    // 🔹 First, draw shape into stencil buffer
+                    render_pass.set_pipeline(&self.shape_render_pipeline);
+                    render_pass.draw_shape_vertices(); // Custom function to draw shape
+
+                    // 🔹 Next, draw the outline using the stencil mask
+                    render_pass.set_pipeline(&self.outline_render_pipeline);
+                    render_pass.draw_outline_vertices(); // Draw slightly larger shape
+
+
+
+                    render_pass.set_pipeline(&self.triangle_render_pipeline);
                     let cursor_shape_vertices = render_cursor_shape(
                         &input.mouse_position,
                         selected_shape,
@@ -359,6 +420,7 @@ impl<'a> Render<'a> {
                         cast_slice(&cursor_shape_vertices),
                     );
                 }
+
                 // then we draw the cursor
                 let new_cursor_vertices = render_cursor(
                     &input.mouse_position,
@@ -380,9 +442,7 @@ impl<'a> Render<'a> {
                 );
                 render_pass.draw(cursor_offset_len..(6 + cursor_offset_len), 0..1);
 
-                self.text_system.set_score_text(state.score);
-                self.text_system.render_score(&mut render_pass);
-                drop(render_pass);
+
 
                 // self.staging_belt.finish();
                 self.queue.submit(iter::once(encoder.finish()));
@@ -501,26 +561,21 @@ fn create_index_buffer(device: &wgpu::Device, max_indices: usize) -> wgpu::Buffe
 }
 
 fn create_pipeline(
-    device: &wgpu::Device,
+    device: &Device,
     render_pipeline_layout: &PipelineLayout,
     vertex_shader_module: &ShaderModule,
     fragment_shader_module: &ShaderModule,
     format: TextureFormat,
     topology: wgpu::PrimitiveTopology,
 ) -> wgpu::RenderPipeline {
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+    device.create_render_pipeline(&RenderPipelineDescriptor {
         label: Some("Render Pipeline"),
         layout: Some(&render_pipeline_layout),
-        vertex: wgpu::VertexState {
-            module: &vertex_shader_module,
-            entry_point: Some("vs_main"),
-            buffers: &[Vertex::DESC],
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: &fragment_shader_module,
+        vertex: default_vertex_shader(vertex_shader_module),
+        fragment: Some(FragmentState {
+            module: fragment_shader_module,
             entry_point: Some("fs_main"),
-            targets: &[Some(wgpu::ColorTargetState {
+            targets: &[Some(ColorTargetState {
                 format,
                 blend: Some(wgpu::BlendState {
                     alpha: wgpu::BlendComponent::REPLACE,
@@ -530,7 +585,6 @@ fn create_pipeline(
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
-
         primitive: wgpu::PrimitiveState {
             topology,
             strip_index_format: None,
@@ -543,7 +597,19 @@ fn create_pipeline(
             // Requires Features::CONSERVATIVE_RASTERIZATION
             conservative: false,
         },
-        depth_stencil: None,
+        //todo Gleb @1 extract this to constant
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: TextureFormat::Depth24PlusStencil8, // Must match render pass
+            depth_write_enabled: false,  // No depth writes for these pipelines
+            depth_compare: wgpu::CompareFunction::Always, // Ignore depth testing
+            stencil: wgpu::StencilState {
+                front: wgpu::StencilFaceState::IGNORE,
+                back: wgpu::StencilFaceState::IGNORE,
+                read_mask: 0,
+                write_mask: 0,
+            },
+            bias: wgpu::DepthBiasState::default(),
+        }),
         multisample: wgpu::MultisampleState {
             count: 1,                         // 2.
             mask: !0,                         // 3.
@@ -551,5 +617,74 @@ fn create_pipeline(
         },
         multiview: None, // 5.
         cache: None,     // 6.
+    })
+}
+
+fn default_vertex_shader(vertex_shader_module: &ShaderModule) -> VertexState {
+    VertexState {
+        module: &vertex_shader_module,
+        entry_point: Some("vs_main"),
+        buffers: &[Vertex::DESC],
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+    }
+}
+
+fn create_shadow_pipeline(
+    device: &Device,
+    vertex_shader: &ShaderModule,
+    fragment_shader: &ShaderModule,
+    texture_format: TextureFormat,
+    outline: bool,
+) -> wgpu::RenderPipeline {
+    let write_mask = if outline { 0xFF } else { 0x00 };
+
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Triangle pipeline"),
+        bind_group_layouts: &[],
+        push_constant_ranges: &[wgpu::PushConstantRange {
+            stages: wgpu::ShaderStages::FRAGMENT,
+            range: 0..4,
+        }],
+    });
+    device.create_render_pipeline(&RenderPipelineDescriptor {
+        label: Some("Outline Pipeline"),
+        layout: Some(&pipeline_layout),
+        vertex: default_vertex_shader(vertex_shader),
+        fragment: Some(FragmentState {
+            module: fragment_shader,
+            entry_point: Some("fs_main"),
+            targets: &[Some(ColorTargetState {
+                format: texture_format,
+                blend: Some(wgpu::BlendState {
+                    alpha: wgpu::BlendComponent::REPLACE,
+                    color: wgpu::BlendComponent::REPLACE,
+                }),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            ..Default::default()
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: TextureFormat::Depth24PlusStencil8,
+            depth_write_enabled: false,
+            depth_compare: wgpu::CompareFunction::Always,
+            stencil: wgpu::StencilState {
+                front: wgpu::StencilFaceState {
+                    compare: wgpu::CompareFunction::Always,
+                    pass_op: wgpu::StencilOperation::Replace, // Write stencil value
+                    ..Default::default()
+                },
+                back: wgpu::StencilFaceState::IGNORE,
+                read_mask: 0xFF,
+                write_mask,
+            },
+            bias: Default::default(),
+        }),
+        multisample: Default::default(),
+        multiview: None,
+        cache: None,
     })
 }

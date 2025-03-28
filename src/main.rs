@@ -9,7 +9,7 @@ use winit::{
 
 use render::render::Render;
 
-use crate::events::Event::{ScoreUpdated, SelectedShapePlaced};
+use crate::events::Event::SelectedShapePlaced;
 use crate::game_entities::{Cell, GameState, SelectedShape, ShapeState};
 use crate::input::Input;
 use crate::render::render::UserRenderConfig;

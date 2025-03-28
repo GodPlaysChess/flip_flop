@@ -4,7 +4,7 @@ use glyphon::{
     Attrs, Buffer, Cache, Color, Family, FontSystem, Metrics, Resolution, Shaping, SwashCache,
     TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
 };
-use wgpu::{MultisampleState, RenderPass};
+use wgpu::{DepthStencilState, MultisampleState, RenderPass};
 
 pub struct TextSystem {
     pub font_system: FontSystem,
@@ -34,7 +34,18 @@ impl TextSystem {
             &mut atlas,
             device.as_ref(),
             MultisampleState::default(),
-            None,
+            Some(DepthStencilState {
+                format: wgpu::TextureFormat::Depth24PlusStencil8, // Must match render pass
+                depth_write_enabled: false,  // No depth writes for these pipelines
+                depth_compare: wgpu::CompareFunction::Always, // Ignore depth testing
+                stencil: wgpu::StencilState {
+                    front: wgpu::StencilFaceState::IGNORE,
+                    back: wgpu::StencilFaceState::IGNORE,
+                    read_mask: 0,
+                    write_mask: 0,
+                },
+                bias: wgpu::DepthBiasState::default(),
+            }),
         );
         let mut buffer = Buffer::new(&mut font_system, Metrics::new(30.0, 40.0));
         buffer.set_size(&mut font_system, Some(200.0), Some(50.0));
