@@ -9,12 +9,6 @@ use crate::input::Input;
 use crate::render::render::UserRenderConfig;
 use crate::space_converters::{to_cell_space, within_bounds, CellCoord, OffsetXY, XY};
 
-// to think about:
-// I have 3 spaces, which I need to convert from and to:
-// 1. pixel screen space - represents coordinate of pixel on the screen
-// 2. cell space - represents the cell number on panel or board
-// 3. game space represents the game entities, like shape N 3.
-// 4. also there's vertex/index space which I use for rendering :D
 pub trait System {
     #[allow(unused_variables)]
     fn start(&mut self, state: &mut GameState) {}
@@ -64,7 +58,6 @@ impl System for SelectionValidationSystem {
                         let col = (px / render_config.cell_size_px) as i16;
                         let row = (py / render_config.cell_size_px) as i16;
                         println!("Clicking over {:?}, {:?} on panel", col, row);
-                        // println!("Shapes on the panel space {:?}" , state.panel.shapes_in_cell_space.iter().);
                         let over_shape = state
                             .panel
                             .shapes_in_cell_space

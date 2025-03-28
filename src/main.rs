@@ -18,7 +18,6 @@ use crate::system::{PlacementSystem, ScoreCleanupSystem, SelectionValidationSyst
 mod events;
 mod game_entities;
 mod input;
-mod logic;
 mod render;
 mod sound;
 mod space_converters;
@@ -50,16 +49,12 @@ pub async fn run() {
     let mut game_event_queue: VecDeque<events::Event> = VecDeque::new();
     let mut input = Input::new();
 
-    // todo initialise all systems
     let selection_system = SelectionValidationSystem;
     let placement_system = PlacementSystem;
     let score_cleanup_system = ScoreCleanupSystem;
 
     window.set_visible(true);
     let mut last_time = instant::Instant::now();
-
-    // logic::handle_input(&mut game, &window, &mut game_event_queue);
-    // logic::game_loop(&mut game, &mut game_event_queue);
 
     let window = &window;
     let mut cursor_position = (0.0, 0.0);

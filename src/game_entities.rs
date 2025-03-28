@@ -211,19 +211,18 @@ impl GameState {
     }
 
     pub fn is_valid_placement(&self, shape: &ShapeType, cell_coord: &CellCoord) -> bool {
-        if cell_coord.row < 0
-            || cell_coord.row >= self.board.size as i16
-            || cell_coord.col < 0
-            || cell_coord.col >= self.board.size as i16
-        {
+        if cell_coord.col < 0 || cell_coord.row < 0 {
             return false;
         }
         let col = cell_coord.col.to_usize().unwrap();
         let row = cell_coord.row.to_usize().unwrap();
-
         for (dx, dy) in shape.cells() {
             let nx = col.wrapping_add(dx);
             let ny = row.wrapping_add(dy);
+            if nx >= self.board.size || ny >= self.board.size {
+                return false;
+            }
+
             if self.board.get(nx, ny).is_none_or(|x| x == &Cell::Filled) {
                 return false;
             }

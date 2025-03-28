@@ -16,9 +16,13 @@
 + click on the shape to select
 + cursor becomes the shape
 + clicking places the shape
++  draw the score
++ update panel when shapes are over
++ shape over the board checks if we can place it
++bug (can place shape over the edge)
 
-- draw the score
-- update panel when shapes are over
-
-- shape over the board checks if we can place it
+- configuring the text buffers
+- nice textures
+- levels
+- sound
 - currently code is disorganised
