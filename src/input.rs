@@ -1,11 +1,9 @@
-use crate::space_converters::XY;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 use winit::{event::ElementState, keyboard::KeyCode};
 
-// todo this one just data structure to pass relevant input to the logic.
-// in omy case the relevant parts are:
-// mouse clicked, mouse coords
+use crate::space_converters::XY;
+
 #[derive(Debug, Default)]
 pub struct Input {
     pub esc_pressed: bool,

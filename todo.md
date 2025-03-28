@@ -16,13 +16,17 @@
 + click on the shape to select
 + cursor becomes the shape
 + clicking places the shape
-+  draw the score
++ draw the score
 + update panel when shapes are over
 + shape over the board checks if we can place it
 + bug (can place shape over the edge)
 
+
+- debug mode - where I can see all shapes, grids, make levels, etc..
 - configuring the text buffers
 - nice textures
+- juicyness - i.e. background, particle effects, colour changes
 - levels
 - sound
-- currently code is disorganised
+- check if can't put any shape => gameover
+- game rules as a config. (Such as, number of shapes no the panel, score limit etc.)

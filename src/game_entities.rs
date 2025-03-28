@@ -72,7 +72,9 @@ impl ShapeType {
         }
     }
 
-    // todo apply random symmetry: mirror, rotational
+    // todo @2
+    // shape type can be represented as: base_type -> vec (as it is now) + rotation,
+    // mirror to get all variations
     pub fn cells(&self) -> Vec<(usize, usize)> {
         return match self {
             // col , row
@@ -82,7 +84,7 @@ impl ShapeType {
             ShapeType::T4 => vec![(0, 1), (1, 0), (1, 1), (1, 2)],
 
             ShapeType::L1 => vec![(0, 0), (0, 1), (0, 2), (1, 2)],
-            ShapeType::L2 => vec![(0, 1), (1, 1), (2, 0), (2, 1)],
+            ShapeType::L2 => vec![(0, 1), (1, 1), ( 2, 0), (2, 1)],
             ShapeType::L3 => vec![(0, 0), (1, 0), (1, 1), (1, 2)],
             ShapeType::L4 => vec![(0, 0), (0, 1), (1, 0), (2, 0)],
 
