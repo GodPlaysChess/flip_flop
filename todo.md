@@ -22,10 +22,11 @@
 + bug (can place shape over the edge)
 
 
+- juicyness - i.e. background, particle effects, colour changes
+- may be some image opens in the background
 - debug mode - where I can see all shapes, grids, make levels, etc..
 - configuring the text buffers
 - nice textures
-- juicyness - i.e. background, particle effects, colour changes
 - levels
 - sound
 - check if can't put any shape => gameover

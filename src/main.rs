@@ -57,7 +57,6 @@ pub async fn run() {
     let mut last_time = instant::Instant::now();
 
     let window = &window;
-    let mut cursor_position = (0.0, 0.0);
     event_loop
         .run(move |event, control_flow| {
             match event {
@@ -124,10 +123,6 @@ pub async fn run() {
 
                     while let Some(event) = game_event_queue.pop_front() {
                         match event {
-                            ScoreUpdated(u32) => {
-                                sound_system.queue(sound_pack.bounce());
-                            }
-
                             events::Event::ShapeSelected(n, coord) => {
                                 game.deselect();
                                 let selected_shape = game.panel.shape_choice.get_mut(n).unwrap();
@@ -154,7 +149,8 @@ pub async fn run() {
                                     &mut game_event_queue,
                                     &config,
                                     None,
-                                )
+                                );
+                                sound_system.queue(sound_pack.bounce());
                             }
                         }
                     }

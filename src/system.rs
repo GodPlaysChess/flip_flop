@@ -131,11 +131,11 @@ impl System for PlacementSystem {
             // update board
             state.place_shape(shape, cell);
 
-            if (state
+            if state
                 .panel
                 .shape_choice
                 .iter()
-                .all(|s| s.state != ShapeState::VISIBLE))
+                .all(|s| s.state != ShapeState::VISIBLE)
             {
                 state.panel = Panel::generate_for_3();
             }
