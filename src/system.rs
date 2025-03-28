@@ -90,7 +90,6 @@ impl System for SelectionValidationSystem {
                 }
                 // something was selected, and we try to place shape on the board
                 Some(selected_shape) => {
-                    //todo CHECK THERE!
                     let placement_xy_0 = XY(x, y).apply_offset(&selected_shape.anchor_offset);
                     let placement_0_cell = to_cell_space(
                         XY(

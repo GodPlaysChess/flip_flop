@@ -157,7 +157,6 @@ pub struct GameState {
     pub score: u32,
 
     // this one is not really game state. It's like UI or smth. also it's XY
-    pub mouse_position: (usize, usize),
     pub panel: Panel,
 }
 
@@ -205,7 +204,6 @@ impl GameState {
             board: Board::new(board_size),
             selected_shape: None,
             score: 0,
-            mouse_position: (0, 0),
             panel,
         }
     }

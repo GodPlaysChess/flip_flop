@@ -12,6 +12,7 @@ use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
 use crate::game_entities::{GameState, SelectedShape};
+use crate::input::Input;
 use crate::render::text_system::TextSystem;
 use crate::render::vertex::{
     generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, CursorState, Vertex,
@@ -276,7 +277,7 @@ impl<'a> Render<'a> {
         }
     }
 
-    pub fn render_state(&mut self, state: &GameState) {
+    pub fn render_state(&mut self, state: &GameState, input: &Input) {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -344,7 +345,7 @@ impl<'a> Render<'a> {
                 let mut cursor_offset_bytes: usize = 0;
                 if let Some(selected_shape) = &state.selected_shape {
                     let cursor_shape_vertices = render_cursor_shape(
-                        &state.mouse_position,
+                        &input.mouse_position,
                         selected_shape,
                         self.user_render_config.cell_size_px,
                         &self.user_render_config.window_size,
@@ -360,7 +361,7 @@ impl<'a> Render<'a> {
                 }
                 // then we draw the cursor
                 let new_cursor_vertices = render_cursor(
-                    &state.mouse_position,
+                    &input.mouse_position,
                     &self.user_render_config.cursor_size,
                     &self.user_render_config.window_size,
                 );
@@ -399,12 +400,11 @@ impl<'a> Render<'a> {
 }
 
 fn render_cursor(
-    mouse_pos: &(usize, usize),
+    mouse_pos: &XY,
     cursor_size: &f32,
     physical_size: &PhysicalSize<u32>,
 ) -> [Vertex; 6] {
-    let mouse_x = mouse_pos.0 as f32;
-    let mouse_y = mouse_pos.1 as f32;
+    let XY(mouse_x, mouse_y) = mouse_pos;
     let half_size = cursor_size / 2.0;
 
     let bot_left = Vertex::ndc_vertex(
@@ -437,14 +437,12 @@ fn render_cursor(
 }
 
 fn render_cursor_shape(
-    mouse_pos: &(usize, usize),
+    mouse_pos: &XY,
     selected_shape: &SelectedShape,
     cell_size_px: f32,
     physical_size: &PhysicalSize<u32>,
 ) -> Vec<Vertex> {
-    let mouse_x = mouse_pos.0 as f32;
-    let mouse_y = mouse_pos.1 as f32;
-    let zero = XY(mouse_x, mouse_y).apply_offset(&selected_shape.anchor_offset);
+    let zero = mouse_pos.apply_offset(&selected_shape.anchor_offset);
     let cells = selected_shape.shape_type.cells();
 
     let mut vertex_result: Vec<Vertex> = vec![];

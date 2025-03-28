@@ -98,10 +98,6 @@ pub async fn run() {
                     ..
                 } => {
                     input.update_mouse_position(position);
-
-                    // todo @1 move to input. no need to keep this info in mouse position
-                    cursor_position = (position.x, position.y);
-                    game.mouse_position = (position.x as usize, position.y as usize);
                 }
                 Event::WindowEvent {
                     event: WindowEvent::MouseInput { button, state, .. },
@@ -173,7 +169,7 @@ pub async fn run() {
                     );
 
                     // todo pass UI instead of game?
-                    render.render_state(&game);
+                    render.render_state(&game, &input);
                     input.reset();
                     window.request_redraw();
                 }

@@ -19,7 +19,7 @@
 +  draw the score
 + update panel when shapes are over
 + shape over the board checks if we can place it
-+bug (can place shape over the edge)
++ bug (can place shape over the edge)
 
 - configuring the text buffers
 - nice textures
