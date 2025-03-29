@@ -1,4 +1,6 @@
 use std::collections::VecDeque;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 use winit::event_loop::EventLoopWindowTarget;
 use winit::{
     event::*,
@@ -29,6 +31,8 @@ mod system;
 pub async fn run() {
     let mut frame_count = 0;
     let mut fps_timer = std::time::Instant::now();
+    let hardware_settings = HardwareSettings { target_fps: 60 };
+    let frame_time: Duration = Duration::from_secs_f64(1.0 / hardware_settings.target_fps as f64);
 
     let config = UserRenderConfig::default();
     env_logger::init();
@@ -63,6 +67,7 @@ pub async fn run() {
     let window = &window;
     event_loop
         .run(move |event, control_flow| {
+            let frame_start = Instant::now();
             match event {
                 Event::WindowEvent {
                     event:
@@ -197,17 +202,22 @@ pub async fn run() {
                     render.render_state(&game, &input);
                     input.reset();
 
-
-                    let frame_time = frame_start.elapsed();
+                    // let frame_time = frame_start.elapsed();
                     let fps = 1.0 / frame_time.as_secs_f32();
                     frame_count += 1;
                     if fps_timer.elapsed().as_secs() >= 1 {
                         println!("FPS: {}", frame_count);
                         frame_count = 0;
-                        fps_timer = std::time::Instant::now();
+                        fps_timer = Instant::now();
                     }
 
                     window.request_redraw();
+
+                    let elapsed = frame_start.elapsed();
+                    if elapsed < frame_time {
+                        sleep(frame_time - elapsed);
+                    }
+                    // *control_flow = ControlFlow::Poll;
                 }
 
                 Event::WindowEvent {
@@ -236,4 +246,8 @@ fn ignore_input(
 
 fn main() {
     pollster::block_on(run());
+}
+
+struct HardwareSettings {
+    target_fps: u32,
 }

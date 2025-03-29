@@ -26,7 +26,15 @@
 
 
 - performance metrics (fps, mem, cpu etc..), to check if the game is properly optimised
-- 
+Optimisations: (GPU utilisation 16% now)
+    - do not re-render static data.
+    - go for indicies where possible (cursor)
+      + limit fps
+    - Use PresentMode::Mailbox (triple buffering) instead of Fifo (double buffering).
+    - possibly less `render_pass.draw_indexed`, and draw all instances at once
+       
+
+
 - juicyness - i.e. background, particle effects, colour changes
 - game rules as a config. (Such as, number of shapes no the panel, score limit etc.)
 - deploy to browser
