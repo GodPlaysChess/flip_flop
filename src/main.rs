@@ -27,8 +27,10 @@ mod space_converters;
 mod system;
 
 pub async fn run() {
-    let config = UserRenderConfig::default();
+    let mut frame_count = 0;
+    let mut fps_timer = std::time::Instant::now();
 
+    let config = UserRenderConfig::default();
     env_logger::init();
     let event_loop = EventLoop::new().unwrap();
     let size = config.window_size;
@@ -111,8 +113,10 @@ pub async fn run() {
                     ..
                 } => {
                     let dt = last_time.elapsed();
+                    let frame_start = std::time::Instant::now();
+
                     last_time = instant::Instant::now();
-                    window.request_redraw();
+                    //todo do we really need to queue another redraw: window.request_redraw();
 
                     game_progress_system.update_state(
                         &input,
@@ -192,6 +196,17 @@ pub async fn run() {
                     // todo pass UI instead of game?
                     render.render_state(&game, &input);
                     input.reset();
+
+
+                    let frame_time = frame_start.elapsed();
+                    let fps = 1.0 / frame_time.as_secs_f32();
+                    frame_count += 1;
+                    if fps_timer.elapsed().as_secs() >= 1 {
+                        println!("FPS: {}", frame_count);
+                        frame_count = 0;
+                        fps_timer = std::time::Instant::now();
+                    }
+
                     window.request_redraw();
                 }
 
