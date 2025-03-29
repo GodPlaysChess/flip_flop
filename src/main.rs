@@ -10,7 +10,7 @@ use winit::{
 use render::render::Render;
 
 use crate::events::Event::SelectedShapePlaced;
-use crate::game_entities::{Cell, GameState, SelectedShape, ShapeState};
+use crate::game_entities::{GameState, SelectedShape, ShapeState};
 use crate::input::Input;
 use crate::render::render::UserRenderConfig;
 use crate::system::{PlacementSystem, ScoreCleanupSystem, SelectionValidationSystem, System};

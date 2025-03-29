@@ -1,11 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::iter;
-use std::ops::Deref;
 use std::rc::Rc;
 
 use bytemuck::cast_slice;
 use glyphon::Resolution;
-use wgpu::core::id::markers::RenderPipeline;
 use wgpu::util::DeviceExt;
 use wgpu::{
     BufferAddress, MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat,
@@ -21,7 +19,7 @@ use crate::render::vertex::{
     generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, CursorState, Vertex,
 };
 use crate::space_converters::{
-    over_board, render_board, render_panel, to_cell_space, within_bounds, CellCoord, Edge, XY,
+    over_board, render_board, render_panel, to_cell_space, CellCoord, Edge, XY,
 };
 
 const FONT_BYTES: &[u8] = include_bytes!("../../res/DejaVuSans.ttf");
@@ -307,7 +305,7 @@ impl<'a> Render<'a> {
         let mut contour_indices: Vec<u32> = Vec::new();
         //
         if let Some(selected_shape) = &state.selected_shape {
-            if (over_board(&input.mouse_position, &self.user_render_config)) {
+            if over_board(&input.mouse_position, &self.user_render_config) {
                 contour_indices = render_contour(
                     &selected_shape,
                     &input.mouse_position,
@@ -375,7 +373,7 @@ impl<'a> Render<'a> {
                 let mut cursor_offset_bytes: usize = 0;
                 if let Some(selected_shape) = &state.selected_shape {
                     // based on input, and selected shape, we can compute if it is over the board
-                    if (over_board(&input.mouse_position, &self.user_render_config)) {
+                    if over_board(&input.mouse_position, &self.user_render_config) {
                         // can also choose to do it in the system, and just render here.
                         self.queue.write_buffer(
                             &self.contour_index_buffer,
@@ -483,8 +481,11 @@ fn render_contour(
             }
         }
     }
-    let contour_edges: Vec<Edge> = edge_set.into_iter().collect();
+    if (edge_set.is_empty()) {
+        return vec![];
+    }
 
+    let contour_edges: Vec<Edge> = edge_set.into_iter().collect();
     order_edges_for_linestrip(contour_edges)
 }
 
@@ -516,7 +517,7 @@ fn order_edges_for_linestrip(edges: Vec<Edge>) -> Vec<u32> {
             visited.insert(next);
             current = next;
         } else {
-            if (neighbors.contains(&first)) {
+            if neighbors.contains(&first) {
                 ordered_vertices.push(first);
             }
             break;
@@ -683,9 +684,10 @@ fn create_pipeline(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::game_entities::ShapeType;
+    use crate::game_entities::BaseShapeType;
     use crate::space_converters::OffsetXY;
+
+    use super::*;
 
     fn mock_render_config() -> UserRenderConfig {
         UserRenderConfig {
@@ -705,7 +707,7 @@ mod tests {
     #[test]
     fn test_render_contour_single_cell() {
         let shape = SelectedShape {
-            shape_type: ShapeType::O,
+            shape_type: BaseShapeType::O,
             anchor_offset: OffsetXY(0, 0),
         }; // 1x1 shape
         let mouse_position = XY(15.0, 15.0);
@@ -723,7 +725,7 @@ mod tests {
     #[test]
     fn test_render_contour_l_shape() {
         let shape = SelectedShape {
-            shape_type: ShapeType::L1,
+            shape_type: BaseShapeType::L1,
             anchor_offset: OffsetXY(0, 0),
         }; // L-shape
         let mouse_position = XY(15.0, 15.0);

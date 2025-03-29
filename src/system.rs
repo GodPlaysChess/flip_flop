@@ -4,7 +4,6 @@ use std::time::Duration;
 use crate::events::Event;
 use crate::events::Event::{SelectedShapePlaced, ShapeSelected};
 use crate::game_entities::{Cell, GameState, Panel, ShapeState};
-use crate::input;
 use crate::input::Input;
 use crate::render::render::UserRenderConfig;
 use crate::space_converters::{to_cell_space, within_bounds, CellCoord, OffsetXY, XY};

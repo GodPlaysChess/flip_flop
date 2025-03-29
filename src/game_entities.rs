@@ -2,10 +2,9 @@ use crate::game_entities::ShapeState::VISIBLE;
 use crate::space_converters::{CellCoord, OffsetXY};
 use cgmath::num_traits::ToPrimitive;
 use rand::prelude::{IteratorRandom, SliceRandom};
-use rand::thread_rng;
+use rand::{thread_rng, Rng};
 use std::cmp::max;
 use std::collections::HashMap;
-use std::ffi::c_ushort;
 use strum::IntoEnumIterator;
 use strum_macros::{EnumCount, EnumIter};
 
@@ -40,37 +39,88 @@ impl Board {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct ShapeType {
+    base_shape_type: BaseShapeType,
+    mirror: bool,
+    rotation: ShapeRot,
+}
+impl ShapeType {
+    pub fn horizontal_cell_size(&self) -> i16 {
+        let n = self.base_shape_type.dimensions();
+        return match self.rotation {
+            ShapeRot::No => n.horizontal,
+            ShapeRot::Cw90 => n.vertical,
+            ShapeRot::Cw180 => n.horizontal,
+            ShapeRot::Cw270 => n.vertical,
+        };
+    }
+
+    pub fn cells(&self) -> Vec<(usize, usize)> {
+        let base_cells = self.base_shape_type.cells();
+        let dimensions = self.base_shape_type.dimensions();
+        let (w, h) = (dimensions.horizontal as usize, dimensions.vertical as usize);
+
+        let transformed_cells: Vec<(usize, usize)> = base_cells
+            .into_iter()
+            .map(|(mut x, mut y)| {
+                if self.mirror && w > 1 {
+                    x = w - 1 - x;
+                }
+
+                let (x, y) = match self.rotation {
+                    ShapeRot::No => (x, y),
+                    ShapeRot::Cw90 => (y, w - 1 - x),
+                    ShapeRot::Cw180 => (w - 1 - x, h - 1 - y),
+                    ShapeRot::Cw270 => (h - 1 - y, x),
+                };
+
+                (x, y)
+            })
+            .collect();
+
+        transformed_cells
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Debug, EnumCount, EnumIter)]
-pub enum ShapeType {
+pub enum ShapeRot {
+    No,
+    Cw90,
+    Cw180,
+    Cw270,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug, EnumCount, EnumIter)]
+pub enum BaseShapeType {
     T1,
-    T2,
-    T3,
-    T4,
     L1,
-    L2,
-    L3,
-    L4,
     I1,
-    I2,
     O,
     OO,
 }
 
-impl ShapeType {
-    pub fn horizontal_cell_size(&self) -> i16 {
+struct Dimension {
+    horizontal: i16,
+    vertical: i16,
+}
+impl Dimension {
+    pub fn new(horizontal: i16, vertical: i16) -> Self {
+        Dimension {
+            horizontal,
+            vertical,
+        }
+    }
+}
+
+impl BaseShapeType {
+    pub fn dimensions(&self) -> Dimension {
         match self {
-            ShapeType::T1 => 3,
-            ShapeType::T2 => 2,
-            ShapeType::T3 => 3,
-            ShapeType::T4 => 2,
-            ShapeType::L1 => 2,
-            ShapeType::L2 => 3,
-            ShapeType::L3 => 2,
-            ShapeType::L4 => 3,
-            ShapeType::I1 => 1,
-            ShapeType::I2 => 4,
-            ShapeType::O => 1,
-            ShapeType::OO => 2,
+            BaseShapeType::T1 => Dimension::new(3, 2),
+            BaseShapeType::L1 => Dimension::new(2, 3),
+            BaseShapeType::I1 => Dimension::new(1, 4),
+            BaseShapeType::O => Dimension::new(1, 1),
+            BaseShapeType::OO => Dimension::new(2, 2),
         }
     }
 
@@ -80,21 +130,14 @@ impl ShapeType {
     pub fn cells(&self) -> Vec<(usize, usize)> {
         return match self {
             // col , row
-            ShapeType::T1 => vec![(1, 0), (0, 1), (1, 1), (2, 1)],
-            ShapeType::T2 => vec![(0, 0), (0, 1), (0, 2), (1, 1)],
-            ShapeType::T3 => vec![(0, 0), (1, 0), (1, 1), (2, 0)],
-            ShapeType::T4 => vec![(0, 1), (1, 0), (1, 1), (1, 2)],
+            BaseShapeType::T1 => vec![(1, 0), (0, 1), (1, 1), (2, 1)],
 
-            ShapeType::L1 => vec![(0, 0), (0, 1), (0, 2), (1, 2)],
-            ShapeType::L2 => vec![(0, 1), (1, 1), (2, 0), (2, 1)],
-            ShapeType::L3 => vec![(0, 0), (1, 0), (1, 1), (1, 2)],
-            ShapeType::L4 => vec![(0, 0), (0, 1), (1, 0), (2, 0)],
+            BaseShapeType::L1 => vec![(0, 0), (0, 1), (0, 2), (1, 2)],
 
-            ShapeType::I1 => vec![(0, 0), (0, 1), (0, 2), (0, 3)],
-            ShapeType::I2 => vec![(0, 0), (1, 0), (2, 0), (3, 0)],
+            BaseShapeType::I1 => vec![(0, 0), (0, 1), (0, 2), (0, 3)],
 
-            ShapeType::O => vec![(0, 0)],
-            ShapeType::OO => vec![(0, 0), (0, 1), (1, 0), (1, 1)],
+            BaseShapeType::O => vec![(0, 0)],
+            BaseShapeType::OO => vec![(0, 0), (0, 1), (1, 0), (1, 1)],
         };
     }
 }
@@ -128,10 +171,21 @@ impl Shape {
 
     pub fn get_random_choice(n: usize) -> Vec<Shape> {
         let mut rng = thread_rng(); // Random number generator
-        let shapes: Vec<ShapeType> = ShapeType::iter().collect();
+        let shapes: Vec<BaseShapeType> = BaseShapeType::iter().collect();
 
-        let random_shapes: Vec<&ShapeType> =
-            (0..n).map(|_| shapes.choose(&mut rng).unwrap()).collect();
+        let random_shapes: Vec<ShapeType> = (0..n)
+            .map(|_| {
+                let base_shape = shapes.choose(&mut rng).unwrap();
+                let mirror = rng.gen_bool(0.5);
+                let rotation = ShapeRot::iter().choose(&mut rng).unwrap();
+
+                ShapeType {
+                    base_shape_type: *base_shape,
+                    mirror,
+                    rotation,
+                }
+            })
+            .collect();
 
         // Compute positions using a fold
         let mut current_col_offset = 0;
@@ -144,7 +198,7 @@ impl Shape {
                     "generating start cell x {:?} for shape type  {:?}",
                     position, shape
                 );
-                return Shape::new(*shape, position);
+                return Shape::new(shape, position);
             })
             .collect()
     }
@@ -300,13 +354,16 @@ impl GameState {
 
 #[cfg(test)]
 mod tests {
-    use crate::game_entities::ShapeType;
+    use crate::game_entities::BaseShapeType;
 
     use super::*;
 
     #[test]
     fn test_shapes_as_grid() {
-        let shapes = vec![Shape::new(ShapeType::I2, 0), Shape::new(ShapeType::OO, 0)];
+        let shapes = vec![
+            Shape::new(BaseShapeType::I2, 0),
+            Shape::new(BaseShapeType::OO, 0),
+        ];
 
         let result = Panel::from_shapes(shapes);
 
