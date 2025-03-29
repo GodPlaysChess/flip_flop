@@ -14,8 +14,8 @@ pub trait System {
     fn start(&mut self, state: &mut GameState) {}
     fn update_state(
         &self,
-        input: &input::Input,
-        dt: instant::Duration,
+        input: &Input,
+        dt: Duration,
         state: &mut GameState,
         events: &mut VecDeque<Event>, // events so systems can communicate with each other
         render_config: &UserRenderConfig,
@@ -194,7 +194,8 @@ impl System for ScoreCleanupSystem {
         }
 
         //todo we can extract the score math in the different system, so we could extend the way score is computed
-        game.score = game.score + (total_cells + full_cols * size + full_rows * size) as u32
+        game.score =
+            game.score + (total_cells + full_cols * full_rows * full_cols * full_rows) as u32
     }
 }
 //
