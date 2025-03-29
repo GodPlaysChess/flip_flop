@@ -3,19 +3,19 @@ use std::time::Duration;
 
 use crate::events::Event;
 use crate::events::Event::{SelectedShapePlaced, ShapeSelected};
-use crate::game_entities::{Cell, GameState, Panel, ShapeState};
+use crate::game_entities::{Cell, Game, GameState, Panel, ShapeState};
 use crate::input::Input;
 use crate::render::render::UserRenderConfig;
 use crate::space_converters::{to_cell_space, within_bounds, CellCoord, OffsetXY, XY};
 
 pub trait System {
     #[allow(unused_variables)]
-    fn start(&mut self, state: &mut GameState) {}
+    fn start(&mut self, state: &mut Game) {}
     fn update_state(
         &self,
         input: &Input,
         dt: Duration,
-        state: &mut GameState,
+        state: &mut Game,
         events: &mut VecDeque<Event>, // events so systems can communicate with each other
         render_config: &UserRenderConfig,
         event: Option<&Event>,
@@ -28,7 +28,7 @@ impl System for SelectionValidationSystem {
         &self,
         input: &Input,
         dt: Duration,
-        state: &mut GameState,
+        state: &mut Game,
         events: &mut VecDeque<Event>,
         render_config: &UserRenderConfig,
         oe: Option<&Event>,
@@ -120,7 +120,7 @@ impl System for PlacementSystem {
         &self,
         input: &Input,
         dt: Duration,
-        state: &mut GameState,
+        state: &mut Game,
         events: &mut VecDeque<Event>,
         render_config: &UserRenderConfig,
         event: Option<&Event>,
@@ -152,7 +152,7 @@ impl System for ScoreCleanupSystem {
         &self,
         input: &Input,
         dt: Duration,
-        game: &mut GameState,
+        game: &mut Game,
         events: &mut VecDeque<Event>,
         render_config: &UserRenderConfig,
         event: Option<&Event>,
@@ -193,24 +193,28 @@ impl System for ScoreCleanupSystem {
         }
 
         //todo we can extract the score math in the different system, so we could extend the way score is computed
-        game.score =
-            game.score + (total_cells + full_cols * full_rows * full_cols * full_rows) as u32
+        let score = (total_cells + full_cols * full_rows * full_cols * full_rows) as i32;
+        game.stats.current_score = game.stats.current_score + score;
+        game.stats.total_score = game.stats.total_score + score;
     }
 }
-//
-//
-// pub struct ShapeGenerationSystem;
-// impl System for ShapeGenerationSystem {
-//     fn update_state(&self, input: &Input, dt: Duration, state: &mut GameState, events: &mut Vec<Event>) {
-//         todo!()
-//     }
-// }
-//
 
-//
-// pub struct ScoreSystem;
-// impl System for ScoreSystem {
-//     fn update_state(&self, input: &Input, dt: Duration, state: &mut GameState, events: &mut Vec<Event>) {
-//
-//     }
-// }
+pub struct WinOrLoseSystem;
+impl System for WinOrLoseSystem {
+    fn update_state(&self, input: &Input, dt: Duration, game: &mut Game, events: &mut VecDeque<Event>, render_config: &UserRenderConfig, event: Option<&Event>) {
+        if game.stats.total_score >= game.stats.target_score {
+            game.game_state = GameState::MoveToNextLevel;
+        }
+        // if can't place shape -> gamover
+
+    }
+}
+
+pub struct NewGameSystem;
+impl System for NewGameSystem {
+    fn update_state(&self, input: &Input, dt: Duration, state: &mut Game, events: &mut VecDeque<Event>, render_config: &UserRenderConfig, event: Option<&Event>) {
+        println!("Next level");
+        state.go_next_level();
+    }
+}
+

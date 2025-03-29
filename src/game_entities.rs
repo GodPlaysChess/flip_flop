@@ -3,7 +3,7 @@ use crate::space_converters::{CellCoord, OffsetXY};
 use cgmath::num_traits::ToPrimitive;
 use rand::prelude::{IteratorRandom, SliceRandom};
 use rand::{thread_rng, Rng};
-use std::cmp::max;
+use std::cmp::{max, min};
 use std::collections::HashMap;
 use strum::IntoEnumIterator;
 use strum_macros::{EnumCount, EnumIter};
@@ -124,9 +124,6 @@ impl BaseShapeType {
         }
     }
 
-    // todo @2
-    // shape type can be represented as: base_type -> vec (as it is now) + rotation,
-    // mirror to get all variations
     pub fn cells(&self) -> Vec<(usize, usize)> {
         return match self {
             // col , row
@@ -207,13 +204,13 @@ impl Shape {
 // todo Mb split into game and UI and system state (or even input). UI is a function of a game, but game - is what the logic is derived from
 // and ui - what is actually rendered?
 // system state - is whatever we need from the user. Like mouse position/last click position etc.Mb RNG comes here.
-pub struct GameState {
+pub struct Game {
     pub board: Board,
     pub selected_shape: Option<SelectedShape>,
-    pub score: u32,
+    pub stats: GameStats,
 
-    // this one is not really game state. It's like UI or smth. also it's XY
     pub panel: Panel,
+    pub game_state: GameState,
 }
 
 pub struct SelectedShape {
@@ -253,16 +250,12 @@ impl Panel {
     }
 }
 
-impl GameState {
-    pub fn new_empty(board_size: usize) -> Self {
-        Self::new_empty_filled(board_size, 0)
-    }
+impl Game {
+    pub fn new_level(board_size: usize, level: u16, total_score: i32) -> Self {
+        // could go to level description
+        let cells_filled = min(level as usize * 3 + 3, board_size * 3);
+        let target_score = level as i32 * 10;
 
-    pub fn new_empty_filled(board_size: usize, cells_filled: usize) -> Self {
-        assert!(
-            cells_filled < board_size * board_size,
-            "number of prefilled cells should be lower than total number of cells"
-        );
         let mut rng = thread_rng();
 
         let panel = Panel::generate_for_3();
@@ -277,12 +270,28 @@ impl GameState {
             board.set_cell(col, row, Cell::Filled);
         }
 
+        let stats = GameStats {
+            level,
+            target_score,
+            current_score: 0,
+            total_score,
+        };
+
         Self {
             board,
             selected_shape: None,
-            score: 0,
+            stats,
             panel,
+            game_state: GameState::Playing,
         }
+    }
+
+    pub fn go_next_level(&mut self) {
+        *self = Self::new_level(
+            self.board.size,
+            self.stats.level + 1,
+            self.stats.total_score,
+        );
     }
 
     pub fn is_valid_placement(&self, shape: &ShapeType, cell_coord: &CellCoord) -> bool {
@@ -350,6 +359,20 @@ impl GameState {
             self.board.set_cell(col, row, Cell::Empty)
         }
     }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum GameState {
+    Playing,
+    GameOver,
+    MoveToNextLevel,
+}
+
+pub struct GameStats {
+    pub level: u16,
+    pub target_score: i32,
+    pub current_score: i32,
+    pub total_score: i32,
 }
 
 #[cfg(test)]

@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use crate::game_entities::GameStats;
 use glyphon::{
     Attrs, Buffer, Cache, Color, Family, FontSystem, Metrics, Resolution, Shaping, SwashCache,
     TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
@@ -11,7 +12,9 @@ pub struct TextSystem {
     pub swash_cache: SwashCache,
     pub atlas: TextAtlas,
     pub renderer: TextRenderer,
-    buffer: Buffer,
+    score_buffer: Buffer,
+    target_score_buffer: Buffer,
+    level_buffer: Buffer,
     device: Rc<wgpu::Device>,
     queue: Rc<wgpu::Queue>,
     viewport: Viewport,
@@ -36,32 +39,73 @@ impl TextSystem {
             MultisampleState::default(),
             None,
         );
-        let mut buffer = Buffer::new(&mut font_system, Metrics::new(30.0, 40.0));
-        buffer.set_size(&mut font_system, Some(200.0), Some(50.0));
+        let mut score_buffer = Buffer::new(&mut font_system, Metrics::new(30.0, 40.0));
+        let mut target_score_buffer = Buffer::new(&mut font_system, Metrics::new(30.0, 40.0));
+        let mut level_buffer = Buffer::new(&mut font_system, Metrics::new(30.0, 40.0));
+        score_buffer.set_size(&mut font_system, Some(200.0), Some(50.0));
+        target_score_buffer.set_size(&mut font_system, Some(200.0), Some(50.0));
+        level_buffer.set_size(&mut font_system, Some(200.0), Some(50.0));
 
         Self {
             font_system,
             swash_cache,
             atlas,
             renderer,
-            buffer,
+            score_buffer,
+            level_buffer,
+            target_score_buffer,
             device,
             queue,
             viewport,
         }
     }
 
-    pub fn render_score(&mut self, render_pass: &mut RenderPass) {
-        if self.buffer.lines.is_empty() {
-            println!("⚠️ Warning: Buffer is empty! Skipping text rendering.");
-            return;
-        }
-        // Prepare text
-        let text_area = TextArea {
-            buffer: &self.buffer,
-            left: 1000.0, // X Position (left corner)
+    pub fn render_score(&mut self, game_stats: &GameStats, render_pass: &mut RenderPass) {
+        &self.score_buffer.set_text(
+            &mut self.font_system,
+            &format!("Score: {}", game_stats.current_score),
+            Attrs::new().family(Family::SansSerif),
+            Shaping::Advanced,
+        );
+        let score_text = TextArea {
+            buffer: &mut self.score_buffer,
+            left: 800.0, // X Position (left corner)
             top: 100.0,   // Y Position (top corner)
             scale: 1.0,
+            bounds: TextBounds::default(),
+            default_color: Color::rgba(0, 255, 0, 255),
+            custom_glyphs: &[],
+        };
+
+        &self.target_score_buffer.set_text(
+            &mut self.font_system,
+            &format!("Target: {}", game_stats.target_score),
+            Attrs::new().family(Family::SansSerif),
+            Shaping::Advanced,
+        );
+
+        let target_score_text = TextArea {
+            buffer: &mut self.target_score_buffer,
+            left: 800.0, // X Position (left corner)
+            top: 200.0,   // Y Position (top corner)
+            scale: 1.0,
+            bounds: TextBounds::default(),
+            default_color: Color::rgba(0, 255, 0, 255),
+            custom_glyphs: &[],
+        };
+
+        &self.level_buffer.set_text(
+            &mut self.font_system,
+            &format!("Level: {}", game_stats.level),
+            Attrs::new().family(Family::SansSerif),
+            Shaping::Advanced,
+        );
+
+        let level_text = TextArea {
+            buffer: &mut self.level_buffer,
+            left: 500.0, // X Position (left corner)
+            top: 25.0,   // Y Position (top corner)
+            scale: 2.0,
             bounds: TextBounds::default(),
             default_color: Color::rgba(0, 255, 0, 255),
             custom_glyphs: &[],
@@ -73,7 +117,7 @@ impl TextSystem {
             &mut self.font_system,
             &mut self.atlas,
             &self.viewport,
-            vec![text_area],
+            vec![score_text, target_score_text, level_text],
             &mut self.swash_cache,
         ) {
             println!("❌ Error in renderer.prepare: {:?}", e);
@@ -84,12 +128,4 @@ impl TextSystem {
             .unwrap();
     }
 
-    pub fn set_score_text(&mut self, score: u32) {
-        self.buffer.set_text(
-            &mut self.font_system,
-            &format!("Score: {}", score),
-            Attrs::new().family(Family::SansSerif),
-            Shaping::Advanced,
-        );
-    }
 }

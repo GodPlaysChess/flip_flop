@@ -10,10 +10,13 @@ use winit::{
 use render::render::Render;
 
 use crate::events::Event::SelectedShapePlaced;
-use crate::game_entities::{GameState, SelectedShape, ShapeState};
+use crate::game_entities::{Game, GameState, SelectedShape, ShapeState};
 use crate::input::Input;
 use crate::render::render::UserRenderConfig;
-use crate::system::{PlacementSystem, ScoreCleanupSystem, SelectionValidationSystem, System};
+use crate::system::{
+    NewGameSystem, PlacementSystem, ScoreCleanupSystem, SelectionValidationSystem, System,
+    WinOrLoseSystem,
+};
 
 mod events;
 mod game_entities;
@@ -39,7 +42,7 @@ pub async fn run() {
     window.set_cursor_visible(false);
 
     let mut render = pollster::block_on(Render::new(&window, config.clone()));
-    let mut game = GameState::new_empty_filled(config.board_size_cols, 5);
+    let mut game = Game::new_level(config.board_size_cols, 1, 0);
 
     let sound_system = sound::SoundSystem::new();
     let sound_pack = sound::SoundPack::new();
@@ -49,6 +52,8 @@ pub async fn run() {
     let selection_system = SelectionValidationSystem;
     let placement_system = PlacementSystem;
     let score_cleanup_system = ScoreCleanupSystem;
+    let game_progress_system = WinOrLoseSystem;
+    let new_game_system = NewGameSystem;
 
     window.set_visible(true);
     let mut last_time = instant::Instant::now();
@@ -109,7 +114,7 @@ pub async fn run() {
                     last_time = instant::Instant::now();
                     window.request_redraw();
 
-                    selection_system.update_state(
+                    game_progress_system.update_state(
                         &input,
                         dt,
                         &mut game,
@@ -118,48 +123,71 @@ pub async fn run() {
                         None,
                     );
 
-                    while let Some(event) = game_event_queue.pop_front() {
-                        match event {
-                            events::Event::ShapeSelected(n, coord) => {
-                                game.deselect();
-                                let selected_shape = game.panel.shape_choice.get_mut(n).unwrap();
-                                game.selected_shape = Some(SelectedShape {
-                                    shape_type: selected_shape.kind,
-                                    anchor_offset: coord,
-                                });
-                                selected_shape.set_state(ShapeState::SELECTED);
-                                println!("Shape {:?} is selected", &selected_shape);
-                            }
-                            SelectedShapePlaced(_, _) => {
-                                placement_system.update_state(
-                                    &input,
-                                    dt,
-                                    &mut game,
-                                    &mut game_event_queue,
-                                    &config,
-                                    Some(&event),
-                                );
-                                score_cleanup_system.update_state(
-                                    &input,
-                                    dt,
-                                    &mut game,
-                                    &mut game_event_queue,
-                                    &config,
-                                    None,
-                                );
-                                sound_system.queue(sound_pack.bounce());
-                            }
-                        }
+                    if game.game_state == GameState::MoveToNextLevel {
+                        new_game_system.update_state(
+                            &input,
+                            dt,
+                            &mut game,
+                            &mut game_event_queue,
+                            &config,
+                            None,
+                        )
                     }
 
-                    score_cleanup_system.update_state(
-                        &input,
-                        dt,
-                        &mut game,
-                        &mut game_event_queue,
-                        &config,
-                        None,
-                    );
+                    if game.game_state == GameState::Playing {
+                        selection_system.update_state(
+                            &input,
+                            dt,
+                            &mut game,
+                            &mut game_event_queue,
+                            &config,
+                            None,
+                        );
+
+                        while let Some(event) = game_event_queue.pop_front() {
+                            match event {
+                                events::Event::ShapeSelected(n, coord) => {
+                                    game.deselect();
+                                    let selected_shape =
+                                        game.panel.shape_choice.get_mut(n).unwrap();
+                                    game.selected_shape = Some(SelectedShape {
+                                        shape_type: selected_shape.kind,
+                                        anchor_offset: coord,
+                                    });
+                                    selected_shape.set_state(ShapeState::SELECTED);
+                                    println!("Shape {:?} is selected", &selected_shape);
+                                }
+                                SelectedShapePlaced(_, _) => {
+                                    placement_system.update_state(
+                                        &input,
+                                        dt,
+                                        &mut game,
+                                        &mut game_event_queue,
+                                        &config,
+                                        Some(&event),
+                                    );
+                                    score_cleanup_system.update_state(
+                                        &input,
+                                        dt,
+                                        &mut game,
+                                        &mut game_event_queue,
+                                        &config,
+                                        None,
+                                    );
+                                    sound_system.queue(sound_pack.bounce());
+                                }
+                            }
+                        }
+
+                        score_cleanup_system.update_state(
+                            &input,
+                            dt,
+                            &mut game,
+                            &mut game_event_queue,
+                            &config,
+                            None,
+                        );
+                    }
 
                     // todo pass UI instead of game?
                     render.render_state(&game, &input);

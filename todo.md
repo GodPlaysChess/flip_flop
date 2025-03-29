@@ -20,6 +20,8 @@
 + update panel when shapes are over
 + shape over the board checks if we can place it
 + bug (can place shape over the edge)
++ shadow for cursor, to see exact position on the board.
++ initial cell distribution on the level.
 
 
 - juicyness - i.e. background, particle effects, colour changes
@@ -28,13 +30,11 @@
 - rules - i.e next level, previous level.
 - deploy to browser
 - check if can't put any shape => gameover
-- initial cell distribution on the level.
 
 - may be some image opens in the background
 - debug mode - where I can see all shapes, grids, make levels, etc..
 - configuring the text buffers
 - nice textures
-+ shadow for cursor, to see exact position on the board.
 - levels
 - sound
 

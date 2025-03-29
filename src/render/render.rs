@@ -12,7 +12,7 @@ use wgpu::{
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
-use crate::game_entities::{GameState, SelectedShape};
+use crate::game_entities::{Game, SelectedShape};
 use crate::input::Input;
 use crate::render::text_system::TextSystem;
 use crate::render::vertex::{
@@ -293,7 +293,7 @@ impl<'a> Render<'a> {
         }
     }
 
-    pub fn render_state(&mut self, state: &GameState, input: &Input) {
+    pub fn render_state(&mut self, state: &Game, input: &Input) {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -426,8 +426,8 @@ impl<'a> Render<'a> {
                 );
                 render_pass.draw(cursor_offset_len..(6 + cursor_offset_len), 0..1);
 
-                self.text_system.set_score_text(state.score);
-                self.text_system.render_score(&mut render_pass);
+                // self.text_system.set_score_text(state.stats.current_score);
+                self.text_system.render_score(&state.stats, &mut render_pass);
                 drop(render_pass);
 
                 // self.staging_belt.finish();
