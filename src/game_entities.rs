@@ -1,9 +1,11 @@
 use crate::game_entities::ShapeState::VISIBLE;
 use crate::space_converters::{CellCoord, OffsetXY};
 use cgmath::num_traits::ToPrimitive;
-use rand::prelude::SliceRandom;
+use rand::prelude::{IteratorRandom, SliceRandom};
+use rand::thread_rng;
 use std::cmp::max;
 use std::collections::HashMap;
+use std::ffi::c_ushort;
 use strum::IntoEnumIterator;
 use strum_macros::{EnumCount, EnumIter};
 
@@ -125,13 +127,11 @@ impl Shape {
     }
 
     pub fn get_random_choice(n: usize) -> Vec<Shape> {
-        let mut rng = rand::thread_rng(); // Random number generator
+        let mut rng = thread_rng(); // Random number generator
         let shapes: Vec<ShapeType> = ShapeType::iter().collect();
 
-        let random_shapes: Vec<&ShapeType> = (0..n)
-            //todo change to derived value
-            .map(|_| shapes.choose(&mut rng).unwrap())
-            .collect();
+        let random_shapes: Vec<&ShapeType> =
+            (0..n).map(|_| shapes.choose(&mut rng).unwrap()).collect();
 
         // Compute positions using a fold
         let mut current_col_offset = 0;
@@ -200,10 +200,31 @@ impl Panel {
 }
 
 impl GameState {
-    pub fn new(board_size: usize) -> Self {
+    pub fn new_empty(board_size: usize) -> Self {
+        Self::new_empty_filled(board_size, 0)
+    }
+
+    pub fn new_empty_filled(board_size: usize, cells_filled: usize) -> Self {
+        assert!(
+            cells_filled < board_size * board_size,
+            "number of prefilled cells should be lower than total number of cells"
+        );
+        let mut rng = thread_rng();
+
         let panel = Panel::generate_for_3();
+        let mut board = Board::new(board_size);
+        // Generate unique random cell coordinates
+        let generated: Vec<(usize, usize)> = (0..board_size)
+            .flat_map(|row| (0..board_size).map(move |col| (col, row)))
+            .choose_multiple(&mut rng, cells_filled);
+
+        // Fill the selected cells
+        for (col, row) in generated {
+            board.set_cell(col, row, Cell::Filled);
+        }
+
         Self {
-            board: Board::new(board_size),
+            board,
             selected_shape: None,
             score: 0,
             panel,

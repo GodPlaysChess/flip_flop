@@ -39,10 +39,7 @@ pub async fn run() {
     window.set_cursor_visible(false);
 
     let mut render = pollster::block_on(Render::new(&window, config.clone()));
-    let mut game = GameState::new(config.board_size_cols);
-    game.board.set_cell(4, 3, Cell::Filled);
-    game.board.set_cell(7, 1, Cell::Filled);
-    game.board.set_cell(0, 0, Cell::Filled);
+    let mut game = GameState::new_empty_filled(config.board_size_cols, 5);
 
     let sound_system = sound::SoundSystem::new();
     let sound_pack = sound::SoundPack::new();
