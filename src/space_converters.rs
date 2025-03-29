@@ -1,5 +1,6 @@
 use crate::game_entities::ShapeState::VISIBLE;
 use crate::game_entities::{Board, Cell, Panel};
+use crate::render::render::UserRenderConfig;
 
 // the UI contains only visible elements. I.e only things are to be rendered.
 // i.e. if shape is hidden - it's not in the UI. Treat it like intermediate datastructure
@@ -39,6 +40,28 @@ pub struct CellCoord {
 impl CellCoord {
     pub fn new(col: i16, row: i16) -> Self {
         Self { col, row }
+    }
+}
+
+#[derive(Hash, Eq, PartialEq, Clone, Copy)]
+pub struct Edge(pub u32, pub u32); // Edge is a pair of vertex indices
+impl Edge {
+    pub fn around_cell(coord: &CellCoord, board_size: usize) -> [Edge; 4] {
+        let ix = cell_to_ix_4(coord, board_size);
+        [
+            Edge(ix[0], ix[1]).canonical(),
+            Edge(ix[1], ix[2]).canonical(),
+            Edge(ix[2], ix[3]).canonical(),
+            Edge(ix[3], ix[0]).canonical(),
+        ]
+    }
+
+    fn canonical(self) -> Edge {
+        if self.0 < self.1 {
+            self
+        } else {
+            Edge(self.1, self.0)
+        }
     }
 }
 
@@ -98,6 +121,28 @@ fn cell_to_ix(coord: &CellCoord, max_col: usize) -> [u32; 6] {
     ];
 }
 
+pub fn cell_to_ix_4(coord: &CellCoord, max_col: usize) -> [u32; 4] {
+    assert!(
+        coord.row >= 0 && coord.col >= 0,
+        "cell coordinate is negative: {:?}",
+        coord
+    );
+    let row = coord.row;
+    let col = coord.col;
+    let stride = (max_col + 1) as i16;
+
+    let top_left = row * stride + col;
+    let top_right = top_left + 1;
+    let bottom_left = top_left + stride;
+    let bottom_right = bottom_left + 1;
+    return [
+        top_left as u32,
+        top_right as u32,
+        bottom_right as u32,
+        bottom_left as u32,
+    ];
+}
+
 // board to index buffer
 pub fn render_board(board: &Board) -> Vec<u32> {
     let mut indices = Vec::new();
@@ -130,16 +175,28 @@ pub fn within_bounds(px: f32, py: f32, x_max: f32, y_max: f32) -> bool {
     px >= 0.0 && px < x_max && py >= 0.0 && py < y_max
 }
 
+pub fn over_board(position: &XY, cfg: &UserRenderConfig) -> bool {
+    let mouse_in_board_basis = position.apply_offset(&OffsetXY(
+        -cfg.board_offset_x_px as i16,
+        -cfg.board_offset_y_px as i16,
+    ));
+    let board_max = cfg.board_size_cols as f32 * cfg.cell_size_px;
+    return within_bounds(
+        mouse_in_board_basis.0,
+        mouse_in_board_basis.1,
+        board_max,
+        board_max,
+    );
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::game_entities::ShapeType;
-
     use super::*;
 
     #[test]
     fn test_single_cell() {
-        let cells = vec![(0, 0)]; // Top-left corner
-        let indices = to_index_space(&cells, 7);
+        let cells = vec![CellCoord::new(0, 0)]; // Top-left corner
+        let indices = to_index_space(cells, 7);
 
         assert_eq!(
             indices,
@@ -152,8 +209,8 @@ mod tests {
 
     #[test]
     fn test_two_adjacent_cells_horizontally() {
-        let cells = vec![(0, 0), (1, 0)]; // Two side-by-side cells in row 0
-        let indices = to_index_space(&cells, 7);
+        let cells = vec![CellCoord::new(0, 0), CellCoord::new(1, 0)]; // Two side-by-side cells in row 0
+        let indices = to_index_space(cells, 7);
 
         assert_eq!(
             indices,
@@ -166,8 +223,8 @@ mod tests {
 
     #[test]
     fn test_two_adjacent_cells_vertically() {
-        let cells = vec![(0, 0), (0, 1)]; // Two stacked cells
-        let indices = to_index_space(&cells, 7);
+        let cells = vec![CellCoord::new(0, 0), CellCoord::new(0, 1)]; // Two stacked cells
+        let indices = to_index_space(cells, 7);
 
         assert_eq!(
             indices,
@@ -180,8 +237,8 @@ mod tests {
 
     #[test]
     fn test_non_contiguous_cells_in_elonagated_grid() {
-        let cells = vec![(0, 0), (2, 1), (5, 2)]; // Scattered cells
-        let indices = to_index_space(&cells, 7);
+        let cells = vec![CellCoord::new(0, 0), CellCoord::new(2, 1), CellCoord::new(5, 2)]; // Scattered cells
+        let indices = to_index_space(cells, 7);
 
         assert_eq!(
             indices,

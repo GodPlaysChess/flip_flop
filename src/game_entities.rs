@@ -84,7 +84,7 @@ impl ShapeType {
             ShapeType::T4 => vec![(0, 1), (1, 0), (1, 1), (1, 2)],
 
             ShapeType::L1 => vec![(0, 0), (0, 1), (0, 2), (1, 2)],
-            ShapeType::L2 => vec![(0, 1), (1, 1), ( 2, 0), (2, 1)],
+            ShapeType::L2 => vec![(0, 1), (1, 1), (2, 0), (2, 1)],
             ShapeType::L3 => vec![(0, 0), (1, 0), (1, 1), (1, 2)],
             ShapeType::L4 => vec![(0, 0), (0, 1), (1, 0), (2, 0)],
 
@@ -285,25 +285,22 @@ mod tests {
 
     #[test]
     fn test_shapes_as_grid() {
-        let shapes = vec![
-            Shape::new(ShapeType::I2, 0.0),
-            Shape::new(ShapeType::OO, 0.0),
-        ];
+        let shapes = vec![Shape::new(ShapeType::I2, 0), Shape::new(ShapeType::OO, 0)];
 
         let result = Panel::from_shapes(shapes);
 
-        let expected = vec![
+        let expected: HashMap<CellCoord, usize> = HashMap::from_iter(vec![
             // First shape (I)
-            (0, 0),
-            (1, 0),
-            (2, 0),
-            (3, 0),
+            (CellCoord::new(0, 0), 0),
+            (CellCoord::new(1, 0), 0),
+            (CellCoord::new(2, 0), 0),
+            (CellCoord::new(3, 0), 0),
             // Second shape (O) should be placed with an offset
-            (5, 0),
-            (5, 1),
-            (6, 0),
-            (6, 1),
-        ];
+            (CellCoord::new(5, 0), 0),
+            (CellCoord::new(5, 1), 0),
+            (CellCoord::new(6, 0), 0),
+            (CellCoord::new(6, 1), 0),
+        ]);
 
         assert_eq!(result.shapes_in_cell_space, expected);
     }

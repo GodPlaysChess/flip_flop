@@ -1,8 +1,11 @@
+use std::collections::{HashMap, HashSet};
 use std::iter;
+use std::ops::Deref;
 use std::rc::Rc;
 
 use bytemuck::cast_slice;
 use glyphon::Resolution;
+use wgpu::core::id::markers::RenderPipeline;
 use wgpu::util::DeviceExt;
 use wgpu::{
     BufferAddress, MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat,
@@ -17,32 +20,12 @@ use crate::render::text_system::TextSystem;
 use crate::render::vertex::{
     generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, CursorState, Vertex,
 };
-use crate::space_converters::{render_board, render_panel, XY};
+use crate::space_converters::{
+    over_board, render_board, render_panel, to_cell_space, within_bounds, CellCoord, Edge, XY,
+};
 
 const FONT_BYTES: &[u8] = include_bytes!("../../res/DejaVuSans.ttf");
 
-pub struct Render<'a> {
-    pub surface: wgpu::Surface<'a>,
-    surface_config: SurfaceConfiguration,
-
-    adapter: wgpu::Adapter,
-    device: Rc<wgpu::Device>,
-    queue: Rc<wgpu::Queue>,
-    point_render_pipeline: wgpu::RenderPipeline,
-    triangle_render_pipeline: wgpu::RenderPipeline,
-
-    board_vertex_buffer: wgpu::Buffer,
-    panel_vertex_buffer: wgpu::Buffer,
-    cursor_vertex_buffer: wgpu::Buffer,
-
-    board_index_buffer: wgpu::Buffer,
-    panel_index_buffer: wgpu::Buffer,
-
-    user_render_config: UserRenderConfig,
-    text_system: TextSystem,
-    // glyph_brush: wgpu_glyph::GlyphBrush<()>,
-    // staging_belt: wgpu::util::StagingBelt,
-}
 #[derive(Clone)]
 pub struct UserRenderConfig {
     pub window_size: PhysicalSize<u32>,
@@ -97,6 +80,29 @@ impl UserRenderConfig {
             panel_offset_y_px, // Correctly computed here
         }
     }
+}
+
+pub struct Render<'a> {
+    pub surface: wgpu::Surface<'a>,
+    surface_config: SurfaceConfiguration,
+
+    adapter: wgpu::Adapter,
+    device: Rc<wgpu::Device>,
+    queue: Rc<wgpu::Queue>,
+    point_render_pipeline: wgpu::RenderPipeline,
+    triangle_render_pipeline: wgpu::RenderPipeline,
+    contour_pipeline: wgpu::RenderPipeline,
+
+    board_vertex_buffer: wgpu::Buffer,
+    panel_vertex_buffer: wgpu::Buffer,
+    cursor_vertex_buffer: wgpu::Buffer,
+
+    board_index_buffer: wgpu::Buffer,
+    panel_index_buffer: wgpu::Buffer,
+    contour_index_buffer: wgpu::Buffer,
+
+    user_render_config: UserRenderConfig,
+    text_system: TextSystem,
 }
 
 impl<'a> Render<'a> {
@@ -205,6 +211,15 @@ impl<'a> Render<'a> {
             wgpu::PrimitiveTopology::TriangleList,
         );
 
+        let contour_pipeline = create_pipeline(
+            &device,
+            &render_pipeline_layout,
+            &vertex_shader_module,
+            &fragment_shader_module,
+            surface_config.format.clone(),
+            wgpu::PrimitiveTopology::LineStrip,
+        );
+
         let board_vertices = normalize_screen_to_ndc(
             generate_board_vertices(&render_config),
             render_config.window_size,
@@ -235,6 +250,7 @@ impl<'a> Render<'a> {
         );
         // there will be at most 4 shapes, 5 cells each, so we could limit it to 20 * 6
         let panel_index_buffer = create_index_buffer(&device, 120);
+        let contour_index_buffer = create_index_buffer(&device, 20);
 
         surface.configure(&device, &surface_config);
         let resolution = Resolution {
@@ -259,11 +275,13 @@ impl<'a> Render<'a> {
             surface_config,
             point_render_pipeline,
             triangle_render_pipeline,
+            contour_pipeline,
             board_vertex_buffer,
             panel_vertex_buffer,
             cursor_vertex_buffer,
             board_index_buffer,
             panel_index_buffer,
+            contour_index_buffer,
             user_render_config: render_config,
             text_system,
         }
@@ -285,6 +303,18 @@ impl<'a> Render<'a> {
         //todo add cursor shadow
         let board_indices = render_board(&state.board);
         let panel_indices = render_panel(&state.panel, self.user_render_config.panel_cols);
+
+        let mut contour_indices: Vec<u32> = Vec::new();
+        //
+        if let Some(selected_shape) = &state.selected_shape {
+            if (over_board(&input.mouse_position, &self.user_render_config)) {
+                contour_indices = render_contour(
+                    &selected_shape,
+                    &input.mouse_position,
+                    &self.user_render_config,
+                );
+            };
+        }
 
         match self.surface.get_current_texture() {
             Ok(frame) => {
@@ -344,6 +374,24 @@ impl<'a> Render<'a> {
                 let mut cursor_offset_len: u32 = 0;
                 let mut cursor_offset_bytes: usize = 0;
                 if let Some(selected_shape) = &state.selected_shape {
+                    // based on input, and selected shape, we can compute if it is over the board
+                    if (over_board(&input.mouse_position, &self.user_render_config)) {
+                        // can also choose to do it in the system, and just render here.
+                        self.queue.write_buffer(
+                            &self.contour_index_buffer,
+                            0,
+                            cast_slice(&contour_indices),
+                        );
+                        render_pass.set_pipeline(&self.contour_pipeline);
+                        render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
+                        render_pass.set_index_buffer(
+                            self.contour_index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
+                        render_pass.draw_indexed(0..contour_indices.len() as u32, 0, 0..1);
+                    }
+
+                    render_pass.set_pipeline(&self.triangle_render_pipeline);
                     let cursor_shape_vertices = render_cursor_shape(
                         &input.mouse_position,
                         selected_shape,
@@ -397,6 +445,85 @@ impl<'a> Render<'a> {
             }
         }
     }
+}
+
+fn render_contour(
+    shape: &SelectedShape,
+    mouse_position: &XY,
+    render_config: &UserRenderConfig,
+) -> Vec<u32> {
+    let placement_xy_0 = mouse_position.apply_offset(&shape.anchor_offset);
+    let placement_0_cell = to_cell_space(
+        XY(
+            render_config.board_offset_x_px,
+            render_config.board_offset_y_px,
+        ),
+        render_config.cell_size_px,
+        &placement_xy_0,
+    );
+    let mut visible_cells = Vec::new();
+    for (dx, dy) in shape.shape_type.cells() {
+        let nx = placement_0_cell.col.wrapping_add(dx as i16);
+        let ny = placement_0_cell.row.wrapping_add(dy as i16);
+        if nx >= 0
+            && nx < render_config.board_size_cols as i16
+            && ny >= 0
+            && ny < render_config.board_size_cols as i16
+        {
+            visible_cells.push(CellCoord::new(nx, ny));
+        }
+    }
+    let mut edge_set: HashSet<Edge> = HashSet::new();
+
+    for cell in &visible_cells {
+        let edges = Edge::around_cell(cell, render_config.board_size_cols);
+        for edge in &edges {
+            if !edge_set.insert(*edge) {
+                edge_set.remove(edge);
+            }
+        }
+    }
+    let contour_edges: Vec<Edge> = edge_set.into_iter().collect();
+
+    order_edges_for_linestrip(contour_edges)
+}
+
+fn order_edges_for_linestrip(edges: Vec<Edge>) -> Vec<u32> {
+    let mut ordered_vertices = Vec::new();
+    let mut visited = HashSet::new();
+    let mut edge_map: HashMap<u32, Vec<u32>> = HashMap::new();
+
+    // Build adjacency map
+    for edge in &edges {
+        edge_map.entry(edge.0).or_insert_with(Vec::new).push(edge.1);
+        edge_map.entry(edge.1).or_insert_with(Vec::new).push(edge.0);
+    }
+
+    // Start from any edge
+    let first = edges[0].0;
+    let mut current = first;
+    ordered_vertices.push(current);
+    visited.insert(first);
+
+    while let Some(neighbors) = edge_map.get(&current) {
+        let next = neighbors
+            .iter()
+            .filter(|&&n| !visited.contains(&n)) // Avoid revisiting
+            .min(); // Pick the smallest to enforce order
+
+        if let Some(&next) = next {
+            ordered_vertices.push(next);
+            visited.insert(next);
+            current = next;
+        } else {
+            if (neighbors.contains(&first)) {
+                ordered_vertices.push(first);
+            }
+            break;
+        }
+    }
+
+    ordered_vertices
 }
 
 fn render_cursor(
@@ -552,4 +679,99 @@ fn create_pipeline(
         multiview: None, // 5.
         cache: None,     // 6.
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game_entities::ShapeType;
+    use crate::space_converters::OffsetXY;
+
+    fn mock_render_config() -> UserRenderConfig {
+        UserRenderConfig {
+            window_size: Default::default(),
+            panel_cols: 0,
+            board_offset_x_px: 0.0,
+            board_offset_y_px: 0.0,
+            panel_offset_x_px: 0.0,
+            cell_size_px: 10.0,
+            board_size_cols: 10,
+            panel_rows: 0,
+            cursor_size: 0.0,
+            panel_offset_y_px: 0.0,
+        }
+    }
+
+    #[test]
+    fn test_render_contour_single_cell() {
+        let shape = SelectedShape {
+            shape_type: ShapeType::O,
+            anchor_offset: OffsetXY(0, 0),
+        }; // 1x1 shape
+        let mouse_position = XY(15.0, 15.0);
+        let render_config = mock_render_config();
+
+        let contour = render_contour(&shape, &mouse_position, &render_config);
+
+        assert_eq!(
+            contour.len(),
+            5,
+            "A single cell should have 4 contour edges"
+        );
+    }
+
+    #[test]
+    fn test_render_contour_l_shape() {
+        let shape = SelectedShape {
+            shape_type: ShapeType::L1,
+            anchor_offset: OffsetXY(0, 0),
+        }; // L-shape
+        let mouse_position = XY(15.0, 15.0);
+        let render_config = mock_render_config();
+
+        let contour = render_contour(&shape, &mouse_position, &render_config);
+        print!("contour {:?}", contour);
+
+        assert_eq!(
+            contour.len(),
+            11,
+            "L-shape should have a valid contour with correct edges"
+        );
+    }
+
+    #[test]
+    fn test_order_edges_for_linestrip() {
+        let edges = vec![
+            Edge(1, 2),
+            Edge(2, 3),
+            Edge(3, 4),
+            Edge(4, 1), // Forms a square loop
+        ];
+
+        let ordered = order_edges_for_linestrip(edges);
+
+        assert_eq!(
+            ordered.len(),
+            5,
+            "Should return a closed loop with one duplicate start"
+        );
+        assert_eq!(ordered[0], ordered[4], "Last vertex should match first");
+    }
+
+    #[test]
+    fn test_order_edges_for_linestrip_incomplete_loop() {
+        let edges = vec![
+            Edge(1, 2),
+            Edge(2, 3),
+            Edge(3, 4), // Open path, no closure
+        ];
+
+        let ordered = order_edges_for_linestrip(edges);
+
+        assert_eq!(
+            ordered.len(),
+            4,
+            "Should return an ordered path with no duplicate end"
+        );
+    }
 }

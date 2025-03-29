@@ -27,7 +27,11 @@
 - debug mode - where I can see all shapes, grids, make levels, etc..
 - configuring the text buffers
 - nice textures
++ shadow for cursor, to see exact position on the board.
 - levels
 - sound
 - check if can't put any shape => gameover
 - game rules as a config. (Such as, number of shapes no the panel, score limit etc.)
+- performance metrics (fps, mem, cpu etc..), to check if the game is properly optimised
+
+- deploy to browser

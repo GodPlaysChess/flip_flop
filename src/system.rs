@@ -206,15 +206,7 @@ impl System for ScoreCleanupSystem {
 //     }
 // }
 //
-// // places shapes on the board
-// // removes from the board
-// pub struct BoardSystem;
-// impl System for BoardSystem {
-//     fn update_state(&self, input: &Input, dt: Duration, state: &mut GameState, events: &mut Vec<Event>) {
-//         todo!()
-//     }
-// }
-//
+
 //
 // pub struct ScoreSystem;
 // impl System for ScoreSystem {
