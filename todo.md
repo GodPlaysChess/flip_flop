@@ -26,7 +26,7 @@
 
 
 - performance metrics (fps, mem, cpu etc..), to check if the game is properly optimised
-Optimisations: (GPU utilisation 16% now)
+Optimisations: (GPU utilisation 16% now 60 FPS, 25% 240 FPs)
     - do not re-render static data.
     - go for indicies where possible (cursor)
       + limit fps

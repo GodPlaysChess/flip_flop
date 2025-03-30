@@ -6,17 +6,18 @@ use bytemuck::cast_slice;
 use glyphon::Resolution;
 use wgpu::util::DeviceExt;
 use wgpu::{
-    BufferAddress, MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat,
-    TextureUsages,
+    BufferAddress, MemoryHints, PipelineLayout, RenderPass, ShaderModule, StoreOp,
+    SurfaceConfiguration, TextureFormat, TextureUsages,
 };
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
-use crate::game_entities::{Game, SelectedShape};
+use crate::game_entities::{Game, Panel, SelectedShape};
 use crate::input::Input;
 use crate::render::text_system::TextSystem;
 use crate::render::vertex::{
-    generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, CursorState, Vertex,
+    generate_board_vertices, generate_panel_vertices, normalize_screen_to_ndc, CursorState,
+    QuadVertex, Vertex, QUAD_VERTICES,
 };
 use crate::space_converters::{
     over_board, render_board, render_panel, to_cell_space, CellCoord, Edge, XY,
@@ -80,6 +81,13 @@ impl UserRenderConfig {
     }
 }
 
+struct RenderState {
+    grid_texture: Option<wgpu::TextureView>,
+    grid_bind_group: wgpu::BindGroup,
+    needs_redraw: bool,
+    grid_bind_group_layout: wgpu::BindGroupLayout,
+}
+
 pub struct Render<'a> {
     pub surface: wgpu::Surface<'a>,
     surface_config: SurfaceConfiguration,
@@ -90,6 +98,7 @@ pub struct Render<'a> {
     point_render_pipeline: wgpu::RenderPipeline,
     triangle_render_pipeline: wgpu::RenderPipeline,
     contour_pipeline: wgpu::RenderPipeline,
+    texture_pipeline: wgpu::RenderPipeline,
 
     board_vertex_buffer: wgpu::Buffer,
     panel_vertex_buffer: wgpu::Buffer,
@@ -98,6 +107,9 @@ pub struct Render<'a> {
     board_index_buffer: wgpu::Buffer,
     panel_index_buffer: wgpu::Buffer,
     contour_index_buffer: wgpu::Buffer,
+    quad_vertex_buffer: wgpu::Buffer,
+
+    render_state: RenderState,
 
     user_render_config: UserRenderConfig,
     text_system: TextSystem,
@@ -191,6 +203,8 @@ impl<'a> Render<'a> {
             .create_shader_module(wgpu::include_wgsl!("../../res/shaders/textured.vert.wgsl"));
         let fragment_shader_module = device
             .create_shader_module(wgpu::include_wgsl!("../../res/shaders/textured.frag.wgsl"));
+        let grid_shader_module =
+            device.create_shader_module(wgpu::include_wgsl!("../../res/shaders/grid.wgsl"));
 
         let point_render_pipeline = create_pipeline(
             &device,
@@ -265,6 +279,21 @@ impl<'a> Render<'a> {
             resolution,
         );
 
+        let render_state = Self::init_static_framebuffer(&device, &queue, &render_config);
+        let texture_pipeline = create_textured_pipeline(
+            &device,
+            TextureFormat::Rgba8UnormSrgb,
+            &render_state.grid_bind_group_layout,
+            &grid_shader_module,
+        );
+
+        // Create buffer
+        let quad_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Quad Vertex Buffer"),
+            contents: cast_slice(&QUAD_VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
         Self {
             surface,
             adapter,
@@ -274,15 +303,106 @@ impl<'a> Render<'a> {
             point_render_pipeline,
             triangle_render_pipeline,
             contour_pipeline,
+            texture_pipeline,
             board_vertex_buffer,
             panel_vertex_buffer,
             cursor_vertex_buffer,
             board_index_buffer,
             panel_index_buffer,
             contour_index_buffer,
+            quad_vertex_buffer,
+            render_state,
             user_render_config: render_config,
             text_system,
         }
+    }
+
+    fn init_static_framebuffer(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        cfg: &UserRenderConfig,
+    ) -> RenderState {
+        let texture_size = wgpu::Extent3d {
+            width: cfg.window_size.width,
+            height: cfg.window_size.height,
+            depth_or_array_layers: 1,
+        };
+
+        let grid_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Grid Texture"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let grid_texture_view = grid_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Create a sampler
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
+        // Bind group layout
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Grid BindGroup Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&grid_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+            label: Some("Grid BindGroup"),
+        });
+
+        RenderState {
+            grid_texture: Some(grid_texture_view),
+            grid_bind_group: bind_group,
+            grid_bind_group_layout: bind_group_layout,
+            needs_redraw: true, // Mark it for first-time rendering
+        }
+    }
+
+    fn draw_grid_texture(&mut self, render_pass: &mut RenderPass<'_>) {
+        render_pass.set_pipeline(&self.texture_pipeline);
+        render_pass.set_bind_group(0, &self.render_state.grid_bind_group, &[]);
+        render_pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
+        render_pass.draw(0..6, 0..1);
     }
 
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
@@ -293,17 +413,76 @@ impl<'a> Render<'a> {
         }
     }
 
+    fn render_grid_to_texture(
+        &mut self,
+        panel: &Panel,
+        board_vertex_number: u32,
+        pandel_vertex_number: u32,
+    ) {
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Grid Encoder"),
+            });
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Static Grid Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.render_state.grid_texture.as_ref().unwrap(),
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            render_pass.set_pipeline(&self.point_render_pipeline);
+            render_pass.set_push_constants(
+                wgpu::ShaderStages::FRAGMENT,
+                0,
+                cast_slice(&[CursorState::NotACursor as u32]),
+            );
+
+            render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
+            render_pass.draw(0..board_vertex_number, 0..1);
+            render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
+            render_pass.draw(0..pandel_vertex_number, 0..1);
+        }
+
+        self.queue.submit(iter::once(encoder.finish()));
+
+        self.render_state.needs_redraw = false;
+    }
+
     pub fn render_state(&mut self, state: &Game, input: &Input) {
+        let board_vertex_number = (self.user_render_config.board_size_cols + 1)
+            * (self.user_render_config.board_size_cols + 1);
+        let panel_vertex_number =
+            (self.user_render_config.panel_cols + 1) * (self.user_render_config.panel_rows + 1);
+
+        // Static rendering goes in here
+        if self.render_state.needs_redraw {
+            println!("Redraw grid and save it to texture");
+            self.render_grid_to_texture(
+                &state.panel,
+                board_vertex_number as u32,
+                panel_vertex_number as u32,
+            );
+        }
+
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        //todo add cursor shadow
         let board_indices = render_board(&state.board);
         let panel_indices = render_panel(&state.panel, self.user_render_config.panel_cols);
 
         let mut contour_indices: Vec<u32> = Vec::new();
-        //
+
         if let Some(selected_shape) = &state.selected_shape {
             if over_board(&input.mouse_position, &self.user_render_config) {
                 contour_indices = render_contour(
@@ -316,36 +495,23 @@ impl<'a> Render<'a> {
 
         match self.surface.get_current_texture() {
             Ok(frame) => {
-                let board_vertex_number = (self.user_render_config.board_size_cols + 1)
-                    * (self.user_render_config.board_size_cols + 1);
-                let panel_vertex_number = (self.user_render_config.panel_cols + 1)
-                    * (self.user_render_config.panel_rows + 1);
                 let view = frame.texture.create_view(&Default::default());
                 let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Main Render Pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: &view,
                         resolve_target: None,
-                        ops: wgpu::Operations::default(),
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: StoreOp::Store,
+                        },
                     })],
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
                 });
 
-                // DRAW GRID
-                render_pass.set_pipeline(&self.point_render_pipeline);
-                render_pass.set_push_constants(
-                    wgpu::ShaderStages::FRAGMENT,
-                    0,
-                    cast_slice(&[CursorState::NotACursor as u32]),
-                );
-
-                render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
-                render_pass.draw(0..board_vertex_number as u32, 0..1); // draw just indices
-
-                render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
-                render_pass.draw(0..panel_vertex_number as u32, 0..1);
+                self.draw_grid_texture(&mut render_pass);
 
                 // DRAW cells: board and panel
                 render_pass.set_pipeline(&self.triangle_render_pipeline);
@@ -416,8 +582,8 @@ impl<'a> Render<'a> {
                     cursor_offset_bytes as BufferAddress,
                     cast_slice(&new_cursor_vertices),
                 );
-                render_pass.set_vertex_buffer(0, self.cursor_vertex_buffer.slice(..));
 
+                render_pass.set_vertex_buffer(0, self.cursor_vertex_buffer.slice(..));
                 render_pass.draw(0..cursor_offset_len, 0..1);
                 render_pass.set_push_constants(
                     wgpu::ShaderStages::FRAGMENT,
@@ -426,8 +592,8 @@ impl<'a> Render<'a> {
                 );
                 render_pass.draw(cursor_offset_len..(6 + cursor_offset_len), 0..1);
 
-                // self.text_system.set_score_text(state.stats.current_score);
-                self.text_system.render_score(&state.stats, &mut render_pass);
+                self.text_system
+                    .render_score(&state.stats, &mut render_pass);
                 drop(render_pass);
 
                 // self.staging_belt.finish();
@@ -679,6 +845,57 @@ fn create_pipeline(
         },
         multiview: None, // 5.
         cache: None,     // 6.
+    })
+}
+
+fn create_textured_pipeline(
+    device: &wgpu::Device,
+    format: TextureFormat,
+    bind_group_layout: &wgpu::BindGroupLayout,
+    shader: &ShaderModule,
+) -> wgpu::RenderPipeline {
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Textured Pipeline Layout"),
+        bind_group_layouts: &[bind_group_layout],
+        push_constant_ranges: &[],
+    });
+
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("Textured Pipeline"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_grid"),
+            compilation_options: Default::default(),
+            buffers: &[QuadVertex::desc()],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_grid"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: Some(wgpu::BlendState::REPLACE),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: Some(wgpu::Face::Back),
+            polygon_mode: wgpu::PolygonMode::Fill,
+            unclipped_depth: false,
+            conservative: false,
+        },
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState {
+            count: 1,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
+        multiview: None,
+        cache: None,
     })
 }
 

@@ -214,10 +214,9 @@ pub async fn run() {
                     window.request_redraw();
 
                     let elapsed = frame_start.elapsed();
-                    if elapsed < frame_time {
-                        sleep(frame_time - elapsed);
-                    }
-                    // *control_flow = ControlFlow::Poll;
+                    // if elapsed < frame_time {
+                    //     sleep(frame_time - elapsed);
+                    // }
                 }
 
                 Event::WindowEvent {
