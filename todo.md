@@ -24,14 +24,13 @@
 + initial cell distribution on the level.
 + rules - i.e next level, previous level.
 
-
-- optimisations: (currently 23% for 240 fps)
+Even when i do not draw anything it's around 23& utilisation.
+- optimisations: (currently 23% for 120 fps/ 28% for 240 fps)  my baseline.
   + re-upload vertrex buffers for grid and panel, only when they change
-  ~ limit fps (rdy in the /optimisation branch)
-  - do not re-render static data.
-  - go for indicies where possible (cursor)
-  - Use PresentMode::Mailbox (triple buffering) instead of Fifo (double buffering).
-  - possibly less `render_pass.draw_indexed`, and draw all instances at once
+  + limit fps
+  + do not re-render static data.
+  - window cursor + skip the loop
+
 
 - performance metrics (fps, mem, cpu etc..), to check if the game is properly optimised
 - juicyness - i.e. background, particle effects, colour changes
