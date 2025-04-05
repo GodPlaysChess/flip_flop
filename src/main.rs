@@ -159,6 +159,7 @@ pub async fn run() {
                                         anchor_offset: coord,
                                     });
                                     selected_shape.set_state(ShapeState::SELECTED);
+                                    game.ui.need_to_update_panel = true;
                                     println!("Shape {:?} is selected", &selected_shape);
                                 }
                                 SelectedShapePlaced(_, _) => {
@@ -193,13 +194,12 @@ pub async fn run() {
                         );
                     }
 
-                    // todo pass UI instead of game?
-                    render.render_state(&game, &input);
+                    // todo pass UI out of the game?
+                    render.render_state(&mut game, &input);
                     input.reset();
 
 
                     let frame_time = frame_start.elapsed();
-                    let fps = 1.0 / frame_time.as_secs_f32();
                     frame_count += 1;
                     if fps_timer.elapsed().as_secs() >= 1 {
                         println!("FPS: {}", frame_count);

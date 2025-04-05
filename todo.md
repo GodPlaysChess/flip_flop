@@ -25,6 +25,8 @@
 + rules - i.e next level, previous level.
 
 
+- optimisations: (currently 23% for 240 fps)
+  + re-upload vertrex buffers for grid and panel, only when they change
 - performance metrics (fps, mem, cpu etc..), to check if the game is properly optimised
 - 
 - juicyness - i.e. background, particle effects, colour changes

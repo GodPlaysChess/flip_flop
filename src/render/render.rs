@@ -293,17 +293,18 @@ impl<'a> Render<'a> {
         }
     }
 
-    pub fn render_state(&mut self, state: &Game, input: &Input) {
+    pub fn render_state(&mut self, state: &mut Game, input: &Input) {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        //todo add cursor shadow
-        let board_indices = render_board(&state.board);
-        let panel_indices = render_panel(&state.panel, self.user_render_config.panel_cols);
+        let board_vertex_number = (self.user_render_config.board_size_cols + 1)
+            * (self.user_render_config.board_size_cols + 1);
+        let panel_vertex_number =
+            (self.user_render_config.panel_cols + 1) * (self.user_render_config.panel_rows + 1);
 
         let mut contour_indices: Vec<u32> = Vec::new();
-        //
+
         if let Some(selected_shape) = &state.selected_shape {
             if over_board(&input.mouse_position, &self.user_render_config) {
                 contour_indices = render_contour(
@@ -314,12 +315,10 @@ impl<'a> Render<'a> {
             };
         }
 
+        let mut ui = &mut state.ui;
+
         match self.surface.get_current_texture() {
             Ok(frame) => {
-                let board_vertex_number = (self.user_render_config.board_size_cols + 1)
-                    * (self.user_render_config.board_size_cols + 1);
-                let panel_vertex_number = (self.user_render_config.panel_cols + 1)
-                    * (self.user_render_config.panel_rows + 1);
                 let view = frame.texture.create_view(&Default::default());
                 let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Main Render Pass"),
@@ -350,22 +349,35 @@ impl<'a> Render<'a> {
                 // DRAW cells: board and panel
                 render_pass.set_pipeline(&self.triangle_render_pipeline);
 
-                //todo If board changed
+                let board_indices = render_board(&state.board);
                 render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
-                self.queue
-                    .write_buffer(&self.board_index_buffer, 0, cast_slice(&board_indices));
+                if (ui.need_to_update_board) {
+                    println!("Updating board");
+                    self.queue.write_buffer(
+                        &self.board_index_buffer,
+                        0,
+                        cast_slice(&board_indices),
+                    );
+                    ui.need_to_update_board = false;
+                }
                 render_pass
                     .set_index_buffer(self.board_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..board_indices.len() as u32, 0, 0..1);
 
-                // ✅ Bind the panel buffers ONCE, then draw all panel elements
-                //todo If panel changed
+                let panel_indices = render_panel(&state.panel, self.user_render_config.panel_cols);
                 render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
-                self.queue
-                    .write_buffer(&self.panel_index_buffer, 0, cast_slice(&panel_indices));
+                if (ui.need_to_update_panel) {
+                    println!("Updating panel");
+                    self.queue.write_buffer(
+                        &self.panel_index_buffer,
+                        0,
+                        cast_slice(&panel_indices),
+                    );
+                    ui.need_to_update_panel = false;
+                }
                 render_pass
                     .set_index_buffer(self.panel_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(0..panel_indices.len() as u32, 0, 0..2);
+                render_pass.draw_indexed(0..panel_indices.len() as u32, 0, 0..1);
 
                 // ✅ Cursor changes every frame, so we must update the buffer.
                 // first we draw cursor as shape
@@ -427,7 +439,8 @@ impl<'a> Render<'a> {
                 render_pass.draw(cursor_offset_len..(6 + cursor_offset_len), 0..1);
 
                 // self.text_system.set_score_text(state.stats.current_score);
-                self.text_system.render_score(&state.stats, &mut render_pass);
+                self.text_system
+                    .render_score(&state.stats, &mut render_pass);
                 drop(render_pass);
 
                 // self.staging_belt.finish();

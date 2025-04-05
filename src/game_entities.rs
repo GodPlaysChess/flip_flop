@@ -211,6 +211,13 @@ pub struct Game {
 
     pub panel: Panel,
     pub game_state: GameState,
+
+    pub ui: UI,
+}
+
+pub struct UI {
+    pub need_to_update_board: bool,
+    pub need_to_update_panel: bool,
 }
 
 pub struct SelectedShape {
@@ -277,12 +284,18 @@ impl Game {
             total_score,
         };
 
+        let ui = UI {
+            need_to_update_board: true,
+            need_to_update_panel: true,
+        };
+
         Self {
             board,
             selected_shape: None,
             stats,
             panel,
             game_state: GameState::Playing,
+            ui,
         }
     }
 
@@ -343,7 +356,7 @@ impl Game {
 
         for s in self.panel.shape_choice.iter_mut() {
             if s.state == ShapeState::SELECTED {
-                s.set_state(VISIBLE)
+                s.set_state(VISIBLE);
             }
         }
     }

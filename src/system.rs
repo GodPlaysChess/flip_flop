@@ -129,6 +129,7 @@ impl System for PlacementSystem {
             println!("Placing shape {:?} to {:?}", shape, cell);
             // update board
             state.place_shape(shape, cell);
+            state.ui.need_to_update_board = true;
 
             if state
                 .panel
@@ -137,6 +138,8 @@ impl System for PlacementSystem {
                 .all(|s| s.state != ShapeState::VISIBLE)
             {
                 state.panel = Panel::generate_for_3();
+
+                state.ui.need_to_update_panel = true;
             }
         }
     }
