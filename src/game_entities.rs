@@ -218,6 +218,7 @@ pub struct Game {
 pub struct UI {
     pub need_to_update_board: bool,
     pub need_to_update_panel: bool,
+    pub lingering_frames: u8,
 }
 
 pub struct SelectedShape {
@@ -287,6 +288,7 @@ impl Game {
         let ui = UI {
             need_to_update_board: true,
             need_to_update_panel: true,
+            lingering_frames: 10
         };
 
         Self {

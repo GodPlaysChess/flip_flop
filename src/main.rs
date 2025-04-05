@@ -45,7 +45,7 @@ pub async fn run() {
         .build(&event_loop)
         .unwrap();
 
-    window.set_cursor_visible(false);
+    window.set_cursor_visible(true);
 
     let mut render = pollster::block_on(Render::new(&window, config.clone()));
     let mut game = Game::new_level(config.board_size_cols, 1, 0);

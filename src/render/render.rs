@@ -6,8 +6,8 @@ use bytemuck::cast_slice;
 use glyphon::Resolution;
 use wgpu::util::DeviceExt;
 use wgpu::{
-    MemoryHints, PipelineLayout, RenderPipeline, ShaderModule, SurfaceConfiguration,
-    TextureFormat, TextureUsages,
+    MemoryHints, PipelineLayout, RenderPipeline, ShaderModule, SurfaceConfiguration, TextureFormat,
+    TextureUsages,
 };
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -39,13 +39,16 @@ pub struct UserRenderConfig {
     pub board_offset_y_px: f32,
     pub panel_offset_x_px: f32,
     pub panel_offset_y_px: f32,
+
+    // number of the frames to show after no game state changes
+    pub lingering_frames: u8,
 }
 const SCREEN_WIDTH: u32 = 1200;
 const SCREEN_HEIGHT: u32 = 800;
 
 impl Default for UserRenderConfig {
     fn default() -> Self {
-        Self::new(12, 5, 10, 10.0, 30.0, 100.0, 100.0, 100.0, 100.0)
+        Self::new(12, 5, 10, 10.0, 30.0, 100.0, 100.0, 100.0, 100.0, 10)
     }
 }
 
@@ -60,6 +63,7 @@ impl UserRenderConfig {
         board_offset_y_px: f32,
         panel_offset_x_px: f32,
         board_panel_y_px: f32,
+        lingering_frames: u8,
     ) -> Self {
         let window_size = PhysicalSize::new(SCREEN_WIDTH, SCREEN_HEIGHT);
         let panel_offset_y_px =
@@ -76,6 +80,7 @@ impl UserRenderConfig {
             board_offset_y_px,
             panel_offset_x_px,
             panel_offset_y_px, // Correctly computed here
+            lingering_frames,
         }
     }
 }
@@ -283,6 +288,14 @@ impl<'a> Render<'a> {
     }
 
     pub fn render_state(&mut self, state: &mut Game, input: &Input) {
+        if skip_render(
+            &mut state.ui,
+            &state.selected_shape,
+            &self.user_render_config,
+        ) {
+            return;
+        }
+
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -371,6 +384,25 @@ impl<'a> Render<'a> {
             }
         }
     }
+}
+
+fn skip_render(
+    ui: &mut UI,
+    selected_shape: &Option<SelectedShape>,
+    cfg: &UserRenderConfig,
+) -> bool {
+    let can_skip = !ui.need_to_update_panel && !ui.need_to_update_panel && selected_shape.is_none();
+
+    if can_skip {
+        if ui.lingering_frames > 0 {
+            ui.lingering_frames -= 1;
+            return false;
+        }
+    } else {
+        ui.lingering_frames = cfg.lingering_frames;
+    }
+
+    return can_skip;
 }
 
 fn draw_cursor(
