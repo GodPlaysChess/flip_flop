@@ -27,8 +27,13 @@
 
 - optimisations: (currently 23% for 240 fps)
   + re-upload vertrex buffers for grid and panel, only when they change
+  ~ limit fps (rdy in the /optimisation branch)
+  - do not re-render static data.
+  - go for indicies where possible (cursor)
+  - Use PresentMode::Mailbox (triple buffering) instead of Fifo (double buffering).
+  - possibly less `render_pass.draw_indexed`, and draw all instances at once
+
 - performance metrics (fps, mem, cpu etc..), to check if the game is properly optimised
-- 
 - juicyness - i.e. background, particle effects, colour changes
 - game rules as a config. (Such as, number of shapes no the panel, score limit etc.)
 - deploy to browser

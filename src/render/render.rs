@@ -6,13 +6,13 @@ use bytemuck::cast_slice;
 use glyphon::Resolution;
 use wgpu::util::DeviceExt;
 use wgpu::{
-    BufferAddress, MemoryHints, PipelineLayout, ShaderModule, SurfaceConfiguration, TextureFormat,
-    TextureUsages,
+    BufferAddress, MemoryHints, PipelineLayout, RenderPipeline, ShaderModule, SurfaceConfiguration,
+    TextureFormat, TextureUsages,
 };
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
-use crate::game_entities::{Game, SelectedShape};
+use crate::game_entities::{Board, Game, Panel, SelectedShape, Shape, UI};
 use crate::input::Input;
 use crate::render::text_system::TextSystem;
 use crate::render::vertex::{
@@ -91,12 +91,14 @@ pub struct Render<'a> {
     triangle_render_pipeline: wgpu::RenderPipeline,
     contour_pipeline: wgpu::RenderPipeline,
 
-    board_vertex_buffer: wgpu::Buffer,
-    panel_vertex_buffer: wgpu::Buffer,
+    // board_vertex_buffer: wgpu::Buffer,
+    // panel_vertex_buffer: wgpu::Buffer,
+    static_vertex_buffer: wgpu::Buffer,
     cursor_vertex_buffer: wgpu::Buffer,
 
     board_index_buffer: wgpu::Buffer,
     panel_index_buffer: wgpu::Buffer,
+    static_index_buffer: wgpu::Buffer,
     contour_index_buffer: wgpu::Buffer,
 
     user_render_config: UserRenderConfig,
@@ -227,15 +229,25 @@ impl<'a> Render<'a> {
             render_config.window_size,
         );
 
-        let board_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Board Vertex Buffer"),
-            contents: cast_slice(&board_vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let mut static_vertices = vec![];
+        static_vertices.extend(board_vertices);
+        static_vertices.extend(panel_vertices);
 
-        let panel_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Panel Vertex Buffer"),
-            contents: cast_slice(&panel_vertices),
+        // let board_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //     label: Some("Board Vertex Buffer"),
+        //     contents: cast_slice(&board_vertices),
+        //     usage: wgpu::BufferUsages::VERTEX,
+        // });
+
+        // let panel_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //     label: Some("Panel Vertex Buffer"),
+        //     contents: cast_slice(&panel_vertices),
+        //     usage: wgpu::BufferUsages::VERTEX,
+        // });
+
+        let static_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Static Vertex Buffer"),
+            contents: cast_slice(&static_vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
@@ -248,6 +260,10 @@ impl<'a> Render<'a> {
         );
         // there will be at most 4 shapes, 5 cells each, so we could limit it to 20 * 6
         let panel_index_buffer = create_index_buffer(&device, 120);
+        let static_index_buffer = create_index_buffer(
+            &device,
+            render_config.board_size_cols * render_config.board_size_cols * 6 + 120,
+        );
         let contour_index_buffer = create_index_buffer(&device, 20);
 
         surface.configure(&device, &surface_config);
@@ -274,11 +290,13 @@ impl<'a> Render<'a> {
             point_render_pipeline,
             triangle_render_pipeline,
             contour_pipeline,
-            board_vertex_buffer,
-            panel_vertex_buffer,
+            // board_vertex_buffer,
+            // panel_vertex_buffer,
+            static_vertex_buffer,
             cursor_vertex_buffer,
             board_index_buffer,
             panel_index_buffer,
+            static_index_buffer,
             contour_index_buffer,
             user_render_config: render_config,
             text_system,
@@ -302,20 +320,7 @@ impl<'a> Render<'a> {
             * (self.user_render_config.board_size_cols + 1);
         let panel_vertex_number =
             (self.user_render_config.panel_cols + 1) * (self.user_render_config.panel_rows + 1);
-
-        let mut contour_indices: Vec<u32> = Vec::new();
-
-        if let Some(selected_shape) = &state.selected_shape {
-            if over_board(&input.mouse_position, &self.user_render_config) {
-                contour_indices = render_contour(
-                    &selected_shape,
-                    &input.mouse_position,
-                    &self.user_render_config,
-                );
-            };
-        }
-
-        let mut ui = &mut state.ui;
+        let static_vertex_number = board_vertex_number + panel_vertex_number;
 
         match self.surface.get_current_texture() {
             Ok(frame) => {
@@ -332,7 +337,7 @@ impl<'a> Render<'a> {
                     occlusion_query_set: None,
                 });
 
-                // DRAW GRID
+                // DRAW GRID (point pipeline)
                 render_pass.set_pipeline(&self.point_render_pipeline);
                 render_pass.set_push_constants(
                     wgpu::ShaderStages::FRAGMENT,
@@ -340,105 +345,44 @@ impl<'a> Render<'a> {
                     cast_slice(&[CursorState::NotACursor as u32]),
                 );
 
-                render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
-                render_pass.draw(0..board_vertex_number as u32, 0..1); // draw just indices
+                render_pass.set_vertex_buffer(0, self.static_vertex_buffer.slice(..));
+                render_pass.draw(0..static_vertex_number as u32, 0..1);
 
-                render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
-                render_pass.draw(0..panel_vertex_number as u32, 0..1);
-
-                // DRAW cells: board and panel
-                render_pass.set_pipeline(&self.triangle_render_pipeline);
-
-                let board_indices = render_board(&state.board);
-                render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
-                if (ui.need_to_update_board) {
-                    println!("Updating board");
-                    self.queue.write_buffer(
-                        &self.board_index_buffer,
-                        0,
-                        cast_slice(&board_indices),
-                    );
-                    ui.need_to_update_board = false;
-                }
-                render_pass
-                    .set_index_buffer(self.board_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(0..board_indices.len() as u32, 0, 0..1);
-
-                let panel_indices = render_panel(&state.panel, self.user_render_config.panel_cols);
-                render_pass.set_vertex_buffer(0, self.panel_vertex_buffer.slice(..));
-                if (ui.need_to_update_panel) {
-                    println!("Updating panel");
-                    self.queue.write_buffer(
-                        &self.panel_index_buffer,
-                        0,
-                        cast_slice(&panel_indices),
-                    );
-                    ui.need_to_update_panel = false;
-                }
-                render_pass
-                    .set_index_buffer(self.panel_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(0..panel_indices.len() as u32, 0, 0..1);
-
-                // ✅ Cursor changes every frame, so we must update the buffer.
-                // first we draw cursor as shape
-                let mut cursor_offset_len: u32 = 0;
-                let mut cursor_offset_bytes: usize = 0;
-                if let Some(selected_shape) = &state.selected_shape {
-                    // based on input, and selected shape, we can compute if it is over the board
-                    if over_board(&input.mouse_position, &self.user_render_config) {
-                        // can also choose to do it in the system, and just render here.
-                        self.queue.write_buffer(
-                            &self.contour_index_buffer,
-                            0,
-                            cast_slice(&contour_indices),
-                        );
-                        render_pass.set_pipeline(&self.contour_pipeline);
-                        render_pass.set_vertex_buffer(0, self.board_vertex_buffer.slice(..));
-                        render_pass.set_index_buffer(
-                            self.contour_index_buffer.slice(..),
-                            wgpu::IndexFormat::Uint32,
-                        );
-                        render_pass.draw_indexed(0..contour_indices.len() as u32, 0, 0..1);
-                    }
-
-                    render_pass.set_pipeline(&self.triangle_render_pipeline);
-                    let cursor_shape_vertices = render_cursor_shape(
-                        &input.mouse_position,
-                        selected_shape,
-                        self.user_render_config.cell_size_px,
-                        &self.user_render_config.window_size,
-                    );
-                    cursor_offset_len = cursor_shape_vertices.len() as u32;
-                    cursor_offset_bytes = cursor_shape_vertices.len() * size_of::<Vertex>();
-                    // println!("Cursor selected vertices are {:?}", cursor_shape_vertices);
-                    self.queue.write_buffer(
-                        &self.cursor_vertex_buffer,
-                        0,
-                        cast_slice(&cursor_shape_vertices),
-                    );
-                }
-                // then we draw the cursor
-                let new_cursor_vertices = render_cursor(
-                    &input.mouse_position,
-                    &self.user_render_config.cursor_size,
-                    &self.user_render_config.window_size,
+                // DRAW SHADOW (line pipeline)
+                draw_cursor_shadow(
+                    &mut render_pass,
+                    state,
+                    &input,
+                    &self.user_render_config,
+                    &self.contour_index_buffer,
+                    &self.static_vertex_buffer,
+                    &self.queue,
+                    &self.contour_pipeline,
                 );
-                self.queue.write_buffer(
+
+                // DRAW cells: board and panel (triangle pipeline)
+                draw_panel_and_board(
+                    &mut render_pass,
+                    &state.board,
+                    &state.panel,
+                    &self.user_render_config,
+                    &self.static_index_buffer,
+                    &self.static_vertex_buffer,
+                    &self.queue,
+                    &mut state.ui,
+                    &self.triangle_render_pipeline,
+                );
+
+                // Triangle pipeline
+                draw_cursor(
+                    &mut render_pass,
+                    &input,
+                    &self.user_render_config,
+                    &state.selected_shape,
                     &self.cursor_vertex_buffer,
-                    cursor_offset_bytes as BufferAddress,
-                    cast_slice(&new_cursor_vertices),
+                    &self.queue,
                 );
-                render_pass.set_vertex_buffer(0, self.cursor_vertex_buffer.slice(..));
 
-                render_pass.draw(0..cursor_offset_len, 0..1);
-                render_pass.set_push_constants(
-                    wgpu::ShaderStages::FRAGMENT,
-                    0,
-                    cast_slice(&[CursorState::Cursor as u32]),
-                );
-                render_pass.draw(cursor_offset_len..(6 + cursor_offset_len), 0..1);
-
-                // self.text_system.set_score_text(state.stats.current_score);
                 self.text_system
                     .render_score(&state.stats, &mut render_pass);
                 drop(render_pass);
@@ -455,6 +399,102 @@ impl<'a> Render<'a> {
                 log::error!("Error: {}", e);
             }
         }
+    }
+}
+
+fn draw_cursor(
+    render_pass: &mut wgpu::RenderPass<'_>,
+    input: &Input,
+    user_render_config: &UserRenderConfig,
+    selected_shape: &Option<SelectedShape>,
+    cursor_vertex_buffer: &wgpu::Buffer,
+    queue: &wgpu::Queue,
+) {
+    if let Some(shape) = selected_shape {
+        let cursor_shape_vertices = render_cursor_shape(
+            &input.mouse_position,
+            shape,
+            user_render_config.cell_size_px,
+            &user_render_config.window_size,
+        );
+        queue.write_buffer(&cursor_vertex_buffer, 0, cast_slice(&cursor_shape_vertices));
+        render_pass.set_vertex_buffer(0, cursor_vertex_buffer.slice(..));
+        render_pass.draw(0..cursor_shape_vertices.len() as u32, 0..1);
+    } else {
+        let new_cursor_vertices = render_cursor(
+            &input.mouse_position,
+            &user_render_config.cursor_size,
+            &user_render_config.window_size,
+        );
+        queue.write_buffer(&cursor_vertex_buffer, 0, cast_slice(&new_cursor_vertices));
+        render_pass.set_vertex_buffer(0, cursor_vertex_buffer.slice(..));
+        render_pass.set_push_constants(
+            wgpu::ShaderStages::FRAGMENT,
+            0,
+            cast_slice(&[CursorState::Cursor as u32]),
+        );
+        render_pass.draw(0..6, 0..1);
+    }
+}
+
+fn draw_panel_and_board(
+    render_pass: &mut wgpu::RenderPass<'_>,
+    board: &Board,
+    panel: &Panel,
+    user_render_config: &UserRenderConfig,
+    static_index_buffer: &wgpu::Buffer,
+    static_vertex_buffer: &wgpu::Buffer,
+    queue: &wgpu::Queue,
+    ui: &mut UI,
+    triangle_render_pipeline: &RenderPipeline,
+) {
+    render_pass.set_pipeline(triangle_render_pipeline);
+
+    let board_index_offset =
+        (user_render_config.board_size_cols + 1) * (user_render_config.board_size_cols + 1);
+    let board_indices = render_board(board);
+    let panel_indices = render_panel(panel, user_render_config.panel_cols, board_index_offset);
+    let mut board_and_panel_indices: Vec<u32> = vec![];
+    board_and_panel_indices.extend(board_indices);
+    board_and_panel_indices.extend(panel_indices);
+
+    render_pass.set_vertex_buffer(0, static_vertex_buffer.slice(..));
+
+    if (ui.need_to_update_board || ui.need_to_update_panel) {
+        println!("Updating board or panel");
+        queue.write_buffer(
+            &static_index_buffer,
+            0,
+            cast_slice(&board_and_panel_indices),
+        );
+        ui.need_to_update_board = false;
+        ui.need_to_update_panel = false;
+    }
+    render_pass.set_index_buffer(static_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+    render_pass.draw_indexed(0..board_and_panel_indices.len() as u32, 0, 0..1);
+}
+
+fn draw_cursor_shadow(
+    render_pass: &mut wgpu::RenderPass<'_>,
+    state: &Game,
+    input: &Input,
+    render_config: &UserRenderConfig,
+    contour_index_buffer: &wgpu::Buffer,
+    static_vertex_buffer: &wgpu::Buffer,
+    queue: &wgpu::Queue,
+    contour_pipeline: &wgpu::RenderPipeline,
+) {
+    if let Some(selected_shape) = &state.selected_shape {
+        if over_board(&input.mouse_position, render_config) {
+            // println!("Shape {:?} is selected", selected_shape.shape_type);
+            let contour_indices =
+                render_contour(&selected_shape, &input.mouse_position, render_config);
+            render_pass.set_pipeline(contour_pipeline);
+            render_pass.set_vertex_buffer(0, static_vertex_buffer.slice(..));
+            queue.write_buffer(&contour_index_buffer, 0, cast_slice(&contour_indices));
+            render_pass.set_index_buffer(contour_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.draw_indexed(0..contour_indices.len() as u32, 0, 0..1);
+        };
     }
 }
 
@@ -540,6 +580,7 @@ fn order_edges_for_linestrip(edges: Vec<Edge>) -> Vec<u32> {
     ordered_vertices
 }
 
+// rectangular red square
 fn render_cursor(
     mouse_pos: &XY,
     cursor_size: &f32,

@@ -73,7 +73,7 @@ pub fn to_cell_space(top_left: XY, cell_size: f32, coord: &XY) -> CellCoord {
 }
 
 //shapes -> index_buffer
-pub fn render_panel(panel: &Panel, panel_width_cols: usize) -> Vec<u32> {
+pub fn render_panel(panel: &Panel, panel_width_cols: usize, board_index_offset: usize) -> Vec<u32> {
     let visible_cells: Vec<CellCoord> = panel
         .shapes_in_cell_space
         .iter()
@@ -87,13 +87,19 @@ pub fn render_panel(panel: &Panel, panel_width_cols: usize) -> Vec<u32> {
         .collect();
 
     // convert grid + dimensions to indices for triangles
-    return to_index_space(visible_cells, panel_width_cols);
+    return to_index_space(visible_cells, panel_width_cols, board_index_offset as u32);
 }
 
-pub fn to_index_space(cells: Vec<CellCoord>, max_col: usize) -> Vec<u32> {
+/*
+ offset represents the number of first vertex index.
+ For example, if we store board and panel in the same vertex buffer, in order to compute panel indices, we need to consider that fact, that the first panel index
+ is the max_board_index + 1. This is expressed by offset.
+*/
+pub fn to_index_space(cells: Vec<CellCoord>, max_col: usize, offset: u32) -> Vec<u32> {
     cells
         .iter()
         .flat_map(|cell_coord| cell_to_ix(cell_coord, max_col))
+        .map(|i| i + offset)
         .collect()
 }
 
@@ -237,7 +243,11 @@ mod tests {
 
     #[test]
     fn test_non_contiguous_cells_in_elonagated_grid() {
-        let cells = vec![CellCoord::new(0, 0), CellCoord::new(2, 1), CellCoord::new(5, 2)]; // Scattered cells
+        let cells = vec![
+            CellCoord::new(0, 0),
+            CellCoord::new(2, 1),
+            CellCoord::new(5, 2),
+        ]; // Scattered cells
         let indices = to_index_space(cells, 7);
 
         assert_eq!(
