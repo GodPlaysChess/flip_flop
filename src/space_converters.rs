@@ -2,23 +2,6 @@ use crate::game_entities::ShapeState::VISIBLE;
 use crate::game_entities::{Board, Cell, Panel};
 use crate::render::render::UserRenderConfig;
 
-// the UI contains only visible elements. I.e only things are to be rendered.
-// i.e. if shape is hidden - it's not in the UI. Treat it like intermediate datastructure
-// between game state and vertex information that is passed in shader
-struct UI {
-    board: Board,
-    mouse: MousePosition,
-    score: Score,
-}
-
-struct Score {
-    value: i16,
-}
-
-struct MousePosition {
-    xy: XY,
-}
-
 // pixel coordinates.
 #[derive(Debug, Default, Clone)]
 pub struct XY(pub f32, pub f32);

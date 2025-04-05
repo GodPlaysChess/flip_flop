@@ -6,13 +6,13 @@ use bytemuck::cast_slice;
 use glyphon::Resolution;
 use wgpu::util::DeviceExt;
 use wgpu::{
-    BufferAddress, MemoryHints, PipelineLayout, RenderPipeline, ShaderModule, SurfaceConfiguration,
+    MemoryHints, PipelineLayout, RenderPipeline, ShaderModule, SurfaceConfiguration,
     TextureFormat, TextureUsages,
 };
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
-use crate::game_entities::{Board, Game, Panel, SelectedShape, Shape, UI};
+use crate::game_entities::{Board, Game, Panel, SelectedShape, UI};
 use crate::input::Input;
 use crate::render::text_system::TextSystem;
 use crate::render::vertex::{
@@ -84,20 +84,15 @@ pub struct Render<'a> {
     pub surface: wgpu::Surface<'a>,
     surface_config: SurfaceConfiguration,
 
-    adapter: wgpu::Adapter,
     device: Rc<wgpu::Device>,
     queue: Rc<wgpu::Queue>,
     point_render_pipeline: wgpu::RenderPipeline,
     triangle_render_pipeline: wgpu::RenderPipeline,
     contour_pipeline: wgpu::RenderPipeline,
 
-    // board_vertex_buffer: wgpu::Buffer,
-    // panel_vertex_buffer: wgpu::Buffer,
     static_vertex_buffer: wgpu::Buffer,
     cursor_vertex_buffer: wgpu::Buffer,
 
-    board_index_buffer: wgpu::Buffer,
-    panel_index_buffer: wgpu::Buffer,
     static_index_buffer: wgpu::Buffer,
     contour_index_buffer: wgpu::Buffer,
 
@@ -233,18 +228,6 @@ impl<'a> Render<'a> {
         static_vertices.extend(board_vertices);
         static_vertices.extend(panel_vertices);
 
-        // let board_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Board Vertex Buffer"),
-        //     contents: cast_slice(&board_vertices),
-        //     usage: wgpu::BufferUsages::VERTEX,
-        // });
-
-        // let panel_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Panel Vertex Buffer"),
-        //     contents: cast_slice(&panel_vertices),
-        //     usage: wgpu::BufferUsages::VERTEX,
-        // });
-
         let static_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Static Vertex Buffer"),
             contents: cast_slice(&static_vertices),
@@ -253,13 +236,6 @@ impl<'a> Render<'a> {
 
         let cursor_vertex_buffer = create_cursor_buffer(&device);
 
-        // for the all board to be filled
-        let board_index_buffer = create_index_buffer(
-            &device,
-            render_config.board_size_cols * render_config.board_size_cols * 6,
-        );
-        // there will be at most 4 shapes, 5 cells each, so we could limit it to 20 * 6
-        let panel_index_buffer = create_index_buffer(&device, 120);
         let static_index_buffer = create_index_buffer(
             &device,
             render_config.board_size_cols * render_config.board_size_cols * 6 + 120,
@@ -283,19 +259,14 @@ impl<'a> Render<'a> {
 
         Self {
             surface,
-            adapter,
             device,
             queue,
             surface_config,
             point_render_pipeline,
             triangle_render_pipeline,
             contour_pipeline,
-            // board_vertex_buffer,
-            // panel_vertex_buffer,
             static_vertex_buffer,
             cursor_vertex_buffer,
-            board_index_buffer,
-            panel_index_buffer,
             static_index_buffer,
             contour_index_buffer,
             user_render_config: render_config,
@@ -460,7 +431,7 @@ fn draw_panel_and_board(
 
     render_pass.set_vertex_buffer(0, static_vertex_buffer.slice(..));
 
-    if (ui.need_to_update_board || ui.need_to_update_panel) {
+    if ui.need_to_update_board || ui.need_to_update_panel {
         println!("Updating board or panel");
         queue.write_buffer(
             &static_index_buffer,
@@ -534,7 +505,7 @@ fn render_contour(
             }
         }
     }
-    if (edge_set.is_empty()) {
+    if edge_set.is_empty() {
         return vec![];
     }
 

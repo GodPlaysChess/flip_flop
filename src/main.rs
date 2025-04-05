@@ -1,4 +1,6 @@
 use std::collections::VecDeque;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 use winit::event_loop::EventLoopWindowTarget;
 use winit::{
     event::*,
@@ -29,6 +31,8 @@ mod system;
 pub async fn run() {
     let mut frame_count = 0;
     let mut fps_timer = std::time::Instant::now();
+    let hardware_settings = HardwareSettings { target_fps: 120 };
+    let frame_time: Duration = Duration::from_secs_f64(1.0 / hardware_settings.target_fps as f64);
 
     let config = UserRenderConfig::default();
     env_logger::init();
@@ -113,10 +117,8 @@ pub async fn run() {
                     ..
                 } => {
                     let dt = last_time.elapsed();
-                    let frame_start = std::time::Instant::now();
-
-                    last_time = instant::Instant::now();
-                    //todo do we really need to queue another redraw: window.request_redraw();
+                    let frame_start = Instant::now();
+                    last_time = Instant::now();
 
                     game_progress_system.update_state(
                         &input,
@@ -198,16 +200,20 @@ pub async fn run() {
                     render.render_state(&mut game, &input);
                     input.reset();
 
-
-                    let frame_time = frame_start.elapsed();
+                    // let frame_time = frame_start.elapsed();
                     frame_count += 1;
                     if fps_timer.elapsed().as_secs() >= 1 {
                         println!("FPS: {}", frame_count);
                         frame_count = 0;
-                        fps_timer = std::time::Instant::now();
+                        fps_timer = Instant::now();
                     }
 
                     window.request_redraw();
+
+                    let elapsed = frame_start.elapsed();
+                    if elapsed < frame_time {
+                        sleep(frame_time - elapsed);
+                    }
                 }
 
                 Event::WindowEvent {
@@ -236,4 +242,8 @@ fn ignore_input(
 
 fn main() {
     pollster::block_on(run());
+}
+
+struct HardwareSettings {
+    target_fps: u32,
 }

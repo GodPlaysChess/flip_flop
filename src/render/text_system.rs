@@ -61,7 +61,7 @@ impl TextSystem {
     }
 
     pub fn render_score(&mut self, game_stats: &GameStats, render_pass: &mut RenderPass) {
-        &self.score_buffer.set_text(
+        self.score_buffer.set_text(
             &mut self.font_system,
             &format!("Score: {}", game_stats.current_score),
             Attrs::new().family(Family::SansSerif),
@@ -77,7 +77,7 @@ impl TextSystem {
             custom_glyphs: &[],
         };
 
-        &self.target_score_buffer.set_text(
+        self.target_score_buffer.set_text(
             &mut self.font_system,
             &format!("Target: {}", game_stats.target_score),
             Attrs::new().family(Family::SansSerif),
@@ -94,7 +94,7 @@ impl TextSystem {
             custom_glyphs: &[],
         };
 
-        &self.level_buffer.set_text(
+        self.level_buffer.set_text(
             &mut self.font_system,
             &format!("Level: {}", game_stats.level),
             Attrs::new().family(Family::SansSerif),

@@ -63,7 +63,7 @@ impl ShapeType {
 
         let transformed_cells: Vec<(usize, usize)> = base_cells
             .into_iter()
-            .map(|(mut x, mut y)| {
+            .map(|(mut x, y)| {
                 if self.mirror && w > 1 {
                     x = w - 1 - x;
                 }
@@ -114,7 +114,7 @@ impl Dimension {
 }
 
 impl BaseShapeType {
-    pub fn dimensions(&self) -> Dimension {
+    fn dimensions(&self) -> Dimension {
         match self {
             BaseShapeType::T1 => Dimension::new(3, 2),
             BaseShapeType::L1 => Dimension::new(2, 3),
